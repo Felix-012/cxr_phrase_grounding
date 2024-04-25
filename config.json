@@ -1,0 +1,89 @@
+{
+  "text_encoder": {
+    "architectures": ["BertForMaskedLM"],
+    "attention_probs_dropout_prob": 0.1,
+    "gradient_checkpointing": false,
+    "hidden_act": "gelu",
+    "hidden_dropout_prob": 0.1,
+    "hidden_size": 768,
+    "initializer_range": 0.02,
+    "intermediate_size": 3072,
+    "layer_norm_eps": 1e-12,
+    "max_position_embeddings": 512,
+    "model_type": "bert",
+    "num_attention_heads": 12,
+    "num_hidden_layers": 12,
+    "pad_token_id": 0,
+    "type_vocab_size": 2,
+    "vocab_size": 28996,
+    "use_attention_mask": true
+  },
+  "tokenizer": {
+    "special_tokens_map_file": null,
+    "full_tokenizer_file": null,
+    "model_max_length": 77
+  },
+  "unet": {
+    "_class_name": "UNet2DConditionModel",
+    "_diffusers_version": "0.6.0",
+    "act_fn": "silu",
+    "attention_head_dim": 8,
+    "block_out_channels": [320, 640, 1280, 1280],
+    "center_input_sample": false,
+    "cross_attention_dim": 768,
+    "down_block_types": ["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"],
+    "downsample_padding": 1,
+    "flip_sin_to_cos": true,
+    "freq_shift": 0,
+    "in_channels": 4,
+    "layers_per_block": 2,
+    "mid_block_scale_factor": 1,
+    "norm_eps": 1e-05,
+    "norm_num_groups": 32,
+    "out_channels": 4,
+    "sample_size": 64,
+    "up_block_types": ["UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D"]
+  },
+  "scheduler": {
+  "_class_name": "PNDMScheduler",
+  "_diffusers_version": "0.6.0",
+  "beta_end": 0.012,
+  "beta_schedule": "scaled_linear",
+  "beta_start": 0.00085,
+  "num_train_timesteps": 1000,
+  "set_alpha_to_one": false,
+  "skip_prk_steps": true,
+  "steps_offset": 1,
+  "trained_betas": null,
+  "clip_sample": false
+  },
+  "vae": {
+  "_class_name": "AutoencoderKL",
+  "_diffusers_version": "0.6.0",
+  "act_fn": "silu",
+  "block_out_channels": [
+    128,
+    256,
+    512,
+    512
+  ],
+  "down_block_types": [
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D",
+    "DownEncoderBlock2D"
+  ],
+  "in_channels": 3,
+  "latent_channels": 4,
+  "layers_per_block": 2,
+  "norm_num_groups": 32,
+  "out_channels": 3,
+  "sample_size": 512,
+  "up_block_types": [
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D",
+    "UpDecoderBlock2D"
+  ]
+  }
+}

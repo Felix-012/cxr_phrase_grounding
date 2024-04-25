@@ -1,0 +1,46 @@
+latent_attention_masks: False
+phrase_grounding_mode: False
+filter_bad_impressions: False
+root: /vol/ideadata/ce90tate/
+work_dir: /vol/ideadata/ce90tate/chest-distillation
+data_dir: /vol/ideadata/ce90tate/data/mimic
+component_dir: /vol/ideadata/ce90tate/chest-distillation/src/lora/components
+
+dataloading:
+  batch_size: 8
+  num_workers: 0
+
+datasets:
+  C: 4
+  H: 512
+  W: 512
+  f: 8
+  train:
+    dataset: chestxraymimic
+    base_dir: /vol/ideadata/ce90tate/data/mimic
+    split: mscxr
+    limit_dataset:
+      - 0
+      - 64
+    preload: true
+
+  val:
+    dataset: chestxraymimic
+    base_dir: /vol/ideadata/ce90tate/data/mimic
+    split: mscxr
+    limit_dataset:
+      - 0
+      - 64
+    preload: true
+
+  test:
+    dataset: chestxraymimicbbox
+    base_dir: /vol/ideadata/ce90tate/data/mimic
+    split: mscxr
+    preload: true
+
+sample:
+  ddim_steps: 75
+  iou_batch_size: 8
+  n_synth_samples_per_class: 625
+  seed: 4200

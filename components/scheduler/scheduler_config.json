@@ -1,0 +1,21 @@
+{
+  "_class_name": "PNDMScheduler",
+  "_diffusers_version": "0.6.0",
+  "beta_end": 0.012,
+  "beta_schedule": "scaled_linear",
+  "beta_start": 0.00085,
+  "num_train_timesteps": 1000,
+  "set_alpha_to_one": false,
+  "skip_prk_steps": true,
+  "steps_offset": 1,
+  "trained_betas": null,
+  "clip_sample": false,
+  "sample_max_value": 1.0,
+  "thresholding": false,
+  "clip_sample_range": 1.0,
+  "rescale_betas_zero_snr": false,
+  "variance_type": "fixed_small",
+  "prediction_type": "epsilon",
+  "timestep_spacing": "leading",
+  "dynamic_thresholding_ratio": 0.995
+}

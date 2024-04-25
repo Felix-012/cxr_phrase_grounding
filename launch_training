@@ -1,0 +1,24 @@
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
+export OUTPUT_DIR="/finetune/lora/radbert"
+export VAL_DATASET_NAME="mscoco"
+export TRAIN_DATASET_NAME="mscoco"
+export PYTHONPATH=$PWD
+
+accelerate launch --mixed_precision="fp16"  /vol/ideadata/ce90tate/chest-distillation/src/experiments/train_radbert_lora.py \
+--pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
+--val_dataset_name=ms-coco \
+--train_dataset_name=ms-coco \
+--dataloader_num_workers=8 \
+--resolution=512 \
+--train_batch_size=1 \
+--gradient_accumulation_steps=4 \
+--max_train_steps=501 \
+--learning_rate=1e-04 \
+--max_grad_norm=1 \
+--lr_scheduler="cosine" \
+--lr_warmup_steps=0 \
+--output_dir=/finetune/lora/radbert \
+--report_to=wandb \
+--checkpointing_steps=500\
+--seed=1337 \
+--data_config=src/experiments/datasets_config_mscoco.yaml \
