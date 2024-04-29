@@ -7,7 +7,7 @@ import numpy as np
 import xml.etree.ElementTree as ET
 import pandas as pd
 from .dataset import FOBADataset
-from utils import DatasetSplit
+from utils_generic import DatasetSplit
 from random import shuffle
 from datasets.utils import file_to_list, resize, path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
@@ -19,7 +19,7 @@ from torchvision.transforms import ToTensor
 from einops import rearrange, repeat
 from log import logger
 import scipy.ndimage as ndimage
-from utils import DatasetSplit, SPLIT_TO_DATASETSPLIT, DATASETSPLIT_TO_SPLIT
+from utils_generic import DatasetSplit, SPLIT_TO_DATASETSPLIT, DATASETSPLIT_TO_SPLIT
 from tqdm import tqdm
 from time import time
 import pickle

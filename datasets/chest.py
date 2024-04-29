@@ -7,7 +7,7 @@ import random
 import numpy as np
 import xml.etree.ElementTree as ET
 import pandas as pd
-from utils import DatasetSplit
+from utils_generic import DatasetSplit
 from random import shuffle
 from datasets.utils import file_to_list, resize, path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
@@ -15,7 +15,7 @@ from datasets.dataset import FOBADataset
 from einops import rearrange, repeat
 from log import logger
 import scipy.ndimage as ndimage
-from utils import DatasetSplit, SPLIT_TO_DATASETSPLIT, DATASETSPLIT_TO_SPLIT
+from utils_generic import DatasetSplit, SPLIT_TO_DATASETSPLIT, DATASETSPLIT_TO_SPLIT
 from tqdm import tqdm
 from time import time
 import pickle
@@ -105,7 +105,12 @@ class MimicCXRDataset(FOBADataset):
             entries["img_raw"] = []
 
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
-            entry = self._load_images([i])
+            j = 0
+            try:
+                entry = self._load_images([i])
+            except FileExistsError:
+                print(f"skipping {self.data[i]['rel_path']} - file does not exist")
+                continue
             for k in entry.keys():
                 if entries.get(k) is None:
                     assert i == 0
@@ -116,9 +121,10 @@ class MimicCXRDataset(FOBADataset):
             z = self.compute_latent(entry["img"], model)
             if self._save_original_images:
                 entries["img_raw"].append(entry["img"])
-                entries["img"][i] = z
+                entries["img"][j] = z
             else:
-                entries["img"][i] = z
+                entries["img"][j] = z
+            j +=1
 
         # save entries
         entry_keys = list(entries.keys())

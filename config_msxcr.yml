@@ -2,9 +2,10 @@ latent_attention_masks: False
 phrase_grounding_mode: False
 filter_bad_impressions: False
 root: /vol/ideadata/ce90tate/
-work_dir: /vol/ideadata/ce90tate/chest-distillation
+work_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding
 data_dir: /vol/ideadata/ce90tate/data/mimic
-component_dir: /vol/ideadata/ce90tate/chest-distillation/src/lora/components
+component_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/components
+mask_dir: /vol/ideadata/ce90tate/preliminary_masks
 
 dataloading:
   batch_size: 8

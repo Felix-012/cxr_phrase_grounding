@@ -5,7 +5,7 @@ import pickle
 from functools import partial
 
 
-class AttentionExtractor():
+class AttentionExtractor:
     def __init__(self, function=None, *args, **kwargs):
         if isinstance(function, str):
             self.reduction_function = getattr(self, function)

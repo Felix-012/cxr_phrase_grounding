@@ -1,10 +1,17 @@
 import os
 
+from einops import repeat, rearrange
+
 os.environ['HF_HOME'] = '/vol/ideadata/ce90tate/.cache'
 
 import torch
 from transformers import AutoModel, AutoTokenizer
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel
+from utils_attention import (
+    cross_attn_init,
+    register_cross_attention_hook,
+    set_layer_with_name_and_path,
+)
 
 
 def _freeze(model):
@@ -12,32 +19,33 @@ def _freeze(model):
     for param in model.parameters():
         param.requires_grad = False
 
-def load_text_encoder(component_name, path, torch_dtype, variant):
+def _load_text_encoder(component_name, path, torch_dtype, variant):
     return AutoModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
 
-def load_unet(component_name, path, torch_dtype, variant):
+def _load_unet(component_name, path, torch_dtype, variant):
     return UNet2DConditionModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
 
-def load_tokenizer(component_name, path, torch_dtype, variant):
+def _load_tokenizer(component_name, path, torch_dtype, variant):
     return AutoTokenizer.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
-def load_scheduler(component_name, path, torch_dtype, variant):
+def _load_scheduler(component_name, path, torch_dtype, variant):
     return DDPMScheduler.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
-def load_vae(component_name, path, torch_dtype, variant):
+def _load_vae(component_name, path, torch_dtype, variant):
     return AutoencoderKL.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
 
-class FrozenCustomPipe:
-    def __init__(self, use_freeze=True, path="/vol/ideadata/ce90tate/chest-distillation/src/lora/components",variant=None,
-                 torch_dtype=torch.float32, device="cuda"):
+class FrozenRadBERTPipe:
+    def __init__(self, use_freeze=True, path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components",variant=None,
+                 torch_dtype=torch.float32, device="cuda", save_attention=False):
 
+        self.device = device
         component_loader = {
-            "text_encoder": load_text_encoder,
-            "tokenizer": load_tokenizer,
-            "unet": load_unet,
-            "vae": load_vae,
-            "scheduler": load_scheduler,
+            "text_encoder": _load_text_encoder,
+            "tokenizer": _load_tokenizer,
+            "unet": _load_unet,
+            "vae": _load_vae,
+            "scheduler": _load_scheduler,
             }
         component_mapper = {}
 
@@ -54,6 +62,10 @@ class FrozenCustomPipe:
                                        tokenizer=component_mapper["tokenizer"], vae=component_mapper["vae"],
                                        scheduler=component_mapper["scheduler"],safety_checker=None, feature_extractor=None,
                                        requires_safety_checker=False)
+
+        if save_attention:
+            cross_attn_init()
+            pipe.unet = set_layer_with_name_and_path(pipe.unet)
+            pipe.unet = register_cross_attention_hook(pipe.unet)
+
         self.pipe = pipe.to(device)
-
-

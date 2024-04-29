@@ -22,10 +22,10 @@ from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-from radbert_pipe import FrozenCustomPipe
+from radbert_pipe import FrozenRadBERTPipe
 from datasets import get_dataset
 from datasets.utils import load_config
-from utils import collate_batch
+from utils_generic import collate_batch
 
 
 
@@ -354,7 +354,7 @@ def main():
         set_seed(args.seed)
 
     # Load scheduler, tokenizer and models.
-    pipeline = FrozenCustomPipe()
+    pipeline = FrozenRadBERTPipe()
     unet = pipeline.pipe.unet
     vae = pipeline.pipe.vae
     text_encoder = pipeline.pipe.text_encoder
@@ -775,7 +775,7 @@ def main():
                             f" {args.validation_prompt}."
                         )
                         # create pipeline
-                        pipeline = FrozenCustomPipe().pipe
+                        pipeline = FrozenRadBERTPipe().pipe
                         pipeline = pipeline.to(accelerator.device)
                         pipeline.set_progress_bar_config(disable=True)
 
@@ -831,7 +831,7 @@ def main():
         # Final inference
         # Load previous pipeline
         if args.validation_prompt is not None:
-            pipeline = FrozenCustomPipe().pipe
+            pipeline = FrozenRadBERTPipe().pipe
             pipeline = pipeline.to(accelerator.device)
 
             # load attention processors

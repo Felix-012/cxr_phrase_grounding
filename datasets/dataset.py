@@ -6,11 +6,11 @@ import random
 import torch
 import cv2
 import numpy as np
-from utils import DatasetSplit
+from utils_generic import DatasetSplit
 from datasets.utils import file_to_list
 from random import shuffle
 from einops import reduce, rearrange, repeat
-from utils import DatasetSplit, SPLIT_TO_DATASETSPLIT
+from utils_generic import DatasetSplit, SPLIT_TO_DATASETSPLIT
 from datasets.utils import resize, path_to_tensor
 from log import logger
 

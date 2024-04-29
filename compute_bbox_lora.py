@@ -30,7 +30,7 @@ from log import logger, log_experiment
 from log import formatter as log_formatter
 from tqdm import tqdm
 import logging
-from utils import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, main_setup
+from utils_generic import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, main_setup
 from einops import reduce, rearrange, repeat
 from pytorch_lightning import seed_everything
 from mpl_toolkits.axes_grid1 import ImageGrid
@@ -44,7 +44,7 @@ from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noi
 from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from diffusers import UNet2DConditionModel
-from radbert_pipe import FrozenCustomPipe
+from radbert_pipe import FrozenRadBERTPipe
 
 
 def compute_masks(rank, config, world_size, lora_weights):
@@ -55,7 +55,7 @@ def compute_masks(rank, config, world_size, lora_weights):
         config["phrase_grounding"] = False
 
     dataset = get_dataset(config, "test")
-    pipeline = FrozenCustomPipe().pipe
+    pipeline = FrozenRadBERTPipe().pipe
     pipeline.unet.config.attention_save_mode = "cross"
     pipeline.load_lora_weights(lora_weights)
     pipeline.unet.requires_grad_(False)
@@ -101,51 +101,46 @@ def compute_masks(rank, config, world_size, lora_weights):
     for samples in tqdm(dataloader, "generating masks"):
         with torch.no_grad():
             with precision_scope("cuda"):
-                with model.ema_scope():
-                    if check_mask_exists(mask_dir, samples):
-                        logger.info(f"Masks already exists for {samples['rel_path']}")
-                        continue
-                    #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
-                    samples[cond_key] = [str(x.split("|")[0]) for x in samples[cond_key]]
-                    samples["impression"] = samples[cond_key]
+                if check_mask_exists(mask_dir, samples):
+                    logger.info(f"Masks already exists for {samples['rel_path']}")
+                    continue
+                #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
+                samples[cond_key] = [str(x.split("|")[0]) for x in samples[cond_key]]
+                samples["impression"] = samples[cond_key]
 
-                    model.cond_stage_model = model.cond_stage_model.to(model.device)
-                    images = model.log_images(samples, N=len(samples[cond_key]), split="test", sample=False, inpaint=True,
-                                                  plot_progressive_rows=False, plot_diffusion_rows=False,
-                                                  use_ema_scope=False, cond_key=cond_key, mask=1.,
-                                                  save_attention=True)
-                    attention_maps = images.pop("attention")
-                    attention_images = preprocess_attention_maps(attention_maps, on_cpu=False)
+                images = pipeline(samples)
+                attention_maps = images.pop("attention")
+                attention_images = preprocess_attention_maps(attention_maps, on_cpu=False)
 
-                    for j, attention in enumerate(attention_images):
-                        tok_attentions = []
-                        txt_label = samples[cond_key][j]
-                         # determine tokenization
-                        txt_label = txt_label.split("|")[0]
-                        token_lens = model.cond_stage_model.compute_word_len(txt_label.split(" "))
-                        token_positions = list(np.cumsum(token_lens) + 1)
-                        token_positions = [1,] + token_positions
-                        label = samples["finding_labels"][j]
-                        query_words = MIMIC_STRING_TO_ATTENTION[label]
+                for j, attention in enumerate(attention_images):
+                    tok_attentions = []
+                    txt_label = samples[cond_key][j]
+                    # determine tokenization
+                    txt_label = txt_label.split("|")[0]
+                    token_lens = model.cond_stage_model.compute_word_len(txt_label.split(" "))
+                    token_positions = list(np.cumsum(token_lens) + 1)
+                    token_positions = [1,] + token_positions
+                    label = samples["finding_labels"][j]
+                    query_words = MIMIC_STRING_TO_ATTENTION[label]
 
-                        locations = word_to_slice(txt_label.split(" "), query_words)
-                        if len(locations) == 0:
-                            # use all
-                            tok_attention = attention[-1*rev_diff_steps:,:,token_positions[0]:token_positions[-1]]
+                    locations = word_to_slice(txt_label.split(" "), query_words)
+                    if len(locations) == 0:
+                        # use all
+                        tok_attention = attention[-1*rev_diff_steps:,:,token_positions[0]:token_positions[-1]]
+                        tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
+                    else:
+                        for location in locations:
+                            tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
                             tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
-                        else:
-                            for location in locations:
-                                tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
-                                tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
 
-                        preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
-                        path = samples_to_path(mask_dir, samples, j)
-                        os.makedirs(os.path.dirname(path), exist_ok=True)
-                        logger.info(f"(rank({rank}): Saving attention mask to {path}")
-                        torch.save(preliminary_attention_mask.to("cpu"), path)
+                    preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
+                    path = samples_to_path(mask_dir, samples, j)
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    logger.info(f"(rank({rank}): Saving attention mask to {path}")
+                    torch.save(preliminary_attention_mask.to("cpu"), path)
 
 
-def compute_iou_score(config):
+def compute_iou_score(config, lora_weights):
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
     else:
@@ -157,14 +152,14 @@ def compute_iou_score(config):
         if config.phrase_grounding_mode:
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
-
-    model_config = OmegaConf.load(f"{config.config_path}")
-    model_config["model"]["params"]["use_ema"] = False
-    model_config["model"]["params"]["unet_config"]["params"]["attention_save_mode"] = "cross"
+    pipeline = FrozenRadBERTPipe().pipe
+    pipeline.unet.config.attention_save_mode = "cross"
+    pipeline.load_lora_weights(lora_weights)
+    pipeline.unet.requires_grad_(False)
+    pipeline.vae.requires_grad_(False)
+    pipeline.text_encoder.requires_grad_(False)
     logger.info(f"Enabling attention save mode")
-
-    model = load_model_from_config(model_config, f"{config.ckpt}")
-    dataset.load_precomputed(model)
+    dataset.load_precomputed(pipeline)
     dataloader = DataLoader(dataset,
                             batch_size=config.sample.iou_batch_size,
                             shuffle=False,
@@ -311,7 +306,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--config", type=str, help="Path to the dataset config file")
     parser.add_argument("--lora_weights", type=str, help="Path to the lora weights",
-                        default="/vol/ideadata/ce90tate/chest-distillation/finetune/lora/radbert")
+                        default="/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert")
     parser.add_argument("--mask_dir", type=str, default=None,
                         help="dir to save masks in. Default will be inside log dir and should be used!")
     parser.add_argument("--filter_bad_impressions", action="store_true", default=False,
@@ -321,17 +316,12 @@ def get_args():
     return parser.parse_args()
 
 
-
 if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
 
     # mask computation
-    mp.spawn(
-        compute_masks,
-        args=(config, world_size, args.lora_weights),
-        nprocs=world_size
-    )
+    compute_masks(0, config, world_size, args.lora_weights)
 
     compute_iou_score(config)

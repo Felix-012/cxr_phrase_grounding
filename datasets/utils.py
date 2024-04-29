@@ -4,10 +4,12 @@ import cv2
 from einops import rearrange, repeat, reduce
 import yaml
 from ml_collections import ConfigDict
+import os.path
 
 
 
 def path_to_tensor(path, normalize=True):
+    if not os.path.isfile(path): raise FileExistsError
     img = torch.tensor(cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB), dtype=torch.float32)
     if normalize:
         img = ((img / 127.5) - 1)
