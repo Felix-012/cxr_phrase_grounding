@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 from transformers import AutoModel, AutoTokenizer
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel, \
     StableDiffusionInpaintPipeline
@@ -33,7 +34,7 @@ def _load_vae(component_name, path, torch_dtype, variant):
 class FrozenRadBERTPipe:
     def __init__(self, use_freeze=True, path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components",variant=None,
                  torch_dtype=torch.float32, device="cuda", save_attention=False, inpaint=False):
-
+        rank = dist.get_rank()
         self.device = device
         component_loader = {
             "text_encoder": _load_text_encoder,
@@ -45,14 +46,14 @@ class FrozenRadBERTPipe:
         component_mapper = {}
 
         for component_name in component_loader.keys():
-            print(f"Loading {component_name}...")
+            print(f"[Rank {rank}] Loading {component_name}...")
             component = component_loader.get(component_name)(component_name, path, torch_dtype, variant)
             component_mapper[component_name] = component
 
         if use_freeze:
             _freeze(component_mapper["text_encoder"])
 
-        print("Ensembling custom pipeline...")
+        print(f"[Rank {rank}] Ensembling custom pipeline...")
         if inpaint:
             pipe = StableDiffusionInpaintPipeline(unet=component_mapper["unet"], text_encoder=component_mapper["text_encoder"],
                                        tokenizer=component_mapper["tokenizer"], vae=component_mapper["vae"],

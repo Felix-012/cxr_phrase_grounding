@@ -9,7 +9,6 @@ import shutil
 from contextlib import nullcontext
 from pathlib import Path
 import wandb
-import datasets
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -26,6 +25,7 @@ from radbert_pipe import FrozenRadBERTPipe
 from datasets import get_dataset
 from datasets.utils import load_config
 from utils_generic import collate_batch
+import torch.distributed as dist
 
 
 
@@ -282,6 +282,7 @@ def main():
 
     os.environ['HF_HOME'] = args.cache_dir
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    rank = dist.get_rank()
 
     import diffusers
     from diffusers import StableDiffusionPipeline
@@ -459,11 +460,11 @@ def main():
         val_dataset.load_precomputed(pipeline.pipe.vae)
         train_dataset.load_precomputed(pipeline.pipe.vae)
 
-        print("Tokenizing training data...")
+        print(f"[Rank {rank}] Tokenizing training data...")
         for data in train_dataset:
             data['input_ids'], data['attention_mask'] = tokenize_captions([data['finding_labels']], is_train=True)
 
-        print("Tokenizing validation data...")
+        print(f"[Rank {rank}] Tokenizing validation data...")
         for data in val_dataset:
             data['input_ids'], data['attention_mask'] = tokenize_captions([data['finding_labels']], is_train=True)
 
