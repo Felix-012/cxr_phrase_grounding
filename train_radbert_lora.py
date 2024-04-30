@@ -55,34 +55,10 @@ def parse_args():
         help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
-        "--train_dataset_name",
-        type=str,
-        default=None,
-        help=(
-            "The name of the Dataset to train on"
-        ),
-    )
-    parser.add_argument(
-        "--val_dataset_name",
-        type=str,
-        default=None,
-        help=(
-            "The name of the Dataset to validate on"
-        ),
-    )
-    parser.add_argument(
         "--num_validation_images",
         type=int,
         default=4,
         help="Number of images that should be generated during validation with `validation_prompt`.",
-    )
-    parser.add_argument(
-        "--train_data_dir",
-        type=str,
-        default=None,
-        help=(
-            "A folder containing the training data."
-        ),
     )
     parser.add_argument(
         "--output_dir",
@@ -298,10 +274,6 @@ def parse_args():
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
 
-    # Sanity checks
-    if args.train_dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Need either a dataset name or a training folder.")
-
     return args
 
 
@@ -386,9 +358,10 @@ def main():
     )
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    unet.to(dtype=weight_dtype)
+    vae.to(dtype=weight_dtype)
+    text_encoder.to(dtype=weight_dtype)
+
 
     # Add adapter and make sure the trainable params are in float32.
     unet.add_adapter(unet_lora_config)
@@ -468,7 +441,7 @@ def main():
         inputs = tokenizer(
             captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
         )
-        return inputs.input_ids.to(accelerator.device), inputs.attention_mask.to(accelerator.device)
+        return inputs.input_ids.to("cuda"), inputs.attention_mask.to("cuda")
 
 
     def unwrap_model(model):
@@ -529,8 +502,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        [unet, optimizer, train_dataloader, lr_scheduler]
+    unet, optimizer, train_dataloader, lr_scheduler, noise_scheduler, vae, text_encoder = accelerator.prepare(
+        [unet, optimizer, train_dataloader, lr_scheduler, noise_scheduler, vae, text_encoder]
     )
 
 
@@ -600,7 +573,7 @@ def main():
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
-                latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]])
+                latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(unet.device)
                 latents = latents * vae.config.scaling_factor
 
                 # Sample noise that we'll add to the latents
@@ -608,12 +581,12 @@ def main():
                 if args.noise_offset:
                     # https://www.crosslabs.org//blog/diffusion-with-offset-noise
                     noise += args.noise_offset * torch.randn(
-                        (latents.shape[0], latents.shape[1], 1, 1), device=latents.device
+                        (latents.shape[0], latents.shape[1], 1, 1), device=unet.device
                     )
 
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
-                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=unet.device)
                 timesteps = timesteps.long()
 
                 # Add noise to the latents according to the noise magnitude at each timestep
@@ -739,7 +712,7 @@ def main():
                         # No noise is added to the latents in validation
                         bsz = latents.shape[0]
                         timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,),
-                                                  device=latents.device)
+                                                  device="cuda")
                         timesteps = timesteps.long()
 
                         # Get the text embedding for conditioning
@@ -776,11 +749,11 @@ def main():
                         )
                         # create pipeline
                         pipeline = FrozenRadBERTPipe().pipe
-                        pipeline = pipeline.to(accelerator.device)
+                        pipeline = pipeline.to("cuda")
                         pipeline.set_progress_bar_config(disable=True)
 
                         # run inference
-                        generator = torch.Generator(device=accelerator.device)
+                        generator = torch.Generator(device="cuda")
                         if args.seed is not None:
                             generator = generator.manual_seed(args.seed)
                         images = []
@@ -832,13 +805,13 @@ def main():
         # Load previous pipeline
         if args.validation_prompt is not None:
             pipeline = FrozenRadBERTPipe().pipe
-            pipeline = pipeline.to(accelerator.device)
+            pipeline = pipeline.to("cuda")
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
 
             # run inference
-            generator = torch.Generator(device=accelerator.device)
+            generator = torch.Generator(device="cuda")
             if args.seed is not None:
                 generator = generator.manual_seed(args.seed)
             images = []
