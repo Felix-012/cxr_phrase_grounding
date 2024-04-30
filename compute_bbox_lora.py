@@ -4,6 +4,7 @@ import shutil
 import pprint
 import time
 import os
+os.environ["TOKENIZERS_PARALLELISM"]="false"
 import cv2
 import json
 import pickle
@@ -45,6 +46,7 @@ from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from diffusers import UNet2DConditionModel
 from radbert_pipe import FrozenRadBERTPipe
+from utils_attention import curr_attn_maps, all_attn_maps
 
 
 def compute_masks(rank, config, world_size, lora_weights):
@@ -55,7 +57,7 @@ def compute_masks(rank, config, world_size, lora_weights):
         config["phrase_grounding"] = False
 
     dataset = get_dataset(config, "test")
-    pipeline = FrozenRadBERTPipe().pipe
+    pipeline = FrozenRadBERTPipe(save_attention=True, inpaint=True).pipe
     pipeline.unet.config.attention_save_mode = "cross"
     pipeline.load_lora_weights(lora_weights)
     pipeline.unet.requires_grad_(False)
@@ -72,7 +74,7 @@ def compute_masks(rank, config, world_size, lora_weights):
 
     dataset.load_precomputed(model.vae)
 
-    seed_everything(time.time())
+    seed_everything(int(time.time()))
     precision_scope = autocast
 
     # visualization args
@@ -91,7 +93,6 @@ def compute_masks(rank, config, world_size, lora_weights):
                             drop_last=False,
                             sampler=data_sampler,
                             )
-    model = model.to(rank)
 
     if hasattr(config, "mask_dir"):
         mask_dir = config.mask_dir
@@ -104,25 +105,39 @@ def compute_masks(rank, config, world_size, lora_weights):
                 if check_mask_exists(mask_dir, samples):
                     logger.info(f"Masks already exists for {samples['rel_path']}")
                     continue
-                #img = model.log_images(samples, cond_key="label_text", unconditional_guidance_scale=1.0, inpaint=False)
+                if len(samples["img"]) < config.sample.iou_batch_size:
+                    continue
                 samples[cond_key] = [str(x.split("|")[0]) for x in samples[cond_key]]
                 samples["impression"] = samples[cond_key]
+                mask = torch.ones((config.sample.iou_batch_size, config.sample.latent_C, config.sample.latent_W, config.sample.latent_H)).to(pipeline.device)
+                latents = [sample.latent_dist.sample() * pipeline.vae.scaling_factor for sample in samples["img"]]
+                curr_attn_maps.clear()
+                all_attn_maps.clear()
+                pipeline(prompt=samples["impression"], mask_image=mask, image=latents)
+                attention_images = preprocess_attention_maps(all_attn_maps, on_cpu=True)
 
-                images = pipeline(samples)
-                attention_maps = images.pop("attention")
-                attention_images = preprocess_attention_maps(attention_maps, on_cpu=False)
-
-                for j, attention in enumerate(attention_images):
+                for j, attention in enumerate(list(attention_images)):
                     tok_attentions = []
                     txt_label = samples[cond_key][j]
                     # determine tokenization
                     txt_label = txt_label.split("|")[0]
-                    token_lens = model.cond_stage_model.compute_word_len(txt_label.split(" "))
+                    words = txt_label.split(" ")
+                    if not isinstance(words, list):
+                        words = list(words)
+                    assert isinstance(words[0], str)
+                    outs = pipeline.tokenizer(words, padding="max_length",
+                                        max_length=pipeline.tokenizer.model_max_length,
+                                        truncation=True,
+                                         return_tensors="pt")["input_ids"]
+                    token_lens = []
+                    for out in outs:
+                        out = list(filter(lambda x: x != 0, out))
+                        token_lens.append(len(out)-2)
+
                     token_positions = list(np.cumsum(token_lens) + 1)
                     token_positions = [1,] + token_positions
                     label = samples["finding_labels"][j]
                     query_words = MIMIC_STRING_TO_ATTENTION[label]
-
                     locations = word_to_slice(txt_label.split(" "), query_words)
                     if len(locations) == 0:
                         # use all
@@ -152,8 +167,7 @@ def compute_iou_score(config, lora_weights):
         if config.phrase_grounding_mode:
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
-    pipeline = FrozenRadBERTPipe().pipe
-    pipeline.unet.config.attention_save_mode = "cross"
+    pipeline = FrozenRadBERTPipe(save_attention=True, inpaint=True).pipe
     pipeline.load_lora_weights(lora_weights)
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
@@ -168,7 +182,7 @@ def compute_iou_score(config, lora_weights):
                             drop_last=False,
                             )
 
-    seed_everything(config.seed)
+    seed_everything(config.sample.seed)
 
     if hasattr(config, "mask_dir"):
         mask_dir = config.mask_dir
@@ -183,31 +197,28 @@ def compute_iou_score(config, lora_weights):
 
     resize_to_imag_size = torchvision.transforms.Resize(512)
     for samples in tqdm(dataloader, "computing metrics"):
-        #z, c, x, xrec = model.get_input(samples, "img", cond_key="label_text", bs=len(samples["rel_path"]),
-        #                                    return_first_stage_outputs=True)
         samples["label_text"] = [str(x.split("|")[0]) for x in samples["label_text"]]
         samples["impression"] = samples["label_text"]
 
         for i in range(len(samples["img"])):
             sample = {k: v[i] for k, v in samples.items()}
-            dataset.add_preliminary_to_sample(sample, samples_to_path(mask_dir, samples, i))
+            try:
+                dataset.add_preliminary_to_sample(sample, samples_to_path(mask_dir, samples, i))
+            except FileNotFoundError:
+                print(f"{samples_to_path(mask_dir, samples, i)} not found - skipping sample")
+                continue
+
             bboxes = sample["bboxxywh"].split("|")
-            bbox_meta = dataset.bbox_meta_data.loc[sample["dicom_id"]]
             for i in range(len(bboxes)):
                 bbox = [int(box) for box in bboxes[i].split("-")]
                 bboxes[i] = bbox
-            #    x, y, w, h = tuple(bbox)
-            #    bbox_img[x:(x + w), y: (y + h)] = 1
+
 
             ground_truth_img = sample["bbox_img"].float()
 
             if torch.isnan(sample["preliminary_mask"]).any():
                 logger.warning(f"NaN in prediction: {sample['rel_path']} -- {samples_to_path(mask_dir, samples, i)}")
                 continue
-
-            #reconstructed_large = xrec[i].clamp(-1, 1)
-            #reconstructed_large = (reconstructed_large + 1)/2
-            #reconstructed = resize_to_latent_size(reconstructed_large)
 
             try:
                 binary_mask = repeat(mask_suggestor(sample, key="preliminary_mask"), "h w -> 3 h w")
@@ -259,14 +270,6 @@ def compute_iou_score(config, lora_weights):
                 ground_truth_img = repeat(ground_truth_img, "h w -> 3 h w")
                 prelim_mask_large = repeat(prelim_mask_large, "h w -> 3 h w")
 
-                #for bbox in bboxes:
-                #    x, y, w, h = tuple(bbox)
-                #    img = apply_rect(img, x, y, h, w)
-                #    prelim_mask_large = apply_rect(prelim_mask_large, x, y, h, w)
-                #    binary_mask_large = apply_rect(binary_mask_large, x, y, h, w)
-
-                #binary_mask_large = apply_rect(binary_mask_large, bbox_gmm_pred[0], bbox_gmm_pred[2], (bbox_gmm_pred[1] - bbox_gmm_pred[0]), (bbox_gmm_pred[3] - bbox_gmm_pred[2]), color="blue")
-
                 fig = plt.figure(figsize=(6, 20))
                 grid = ImageGrid(fig, 111,
                                  nrows_ncols=(4, 1),
@@ -279,11 +282,11 @@ def compute_iou_score(config, lora_weights):
                     ax.axis('off')
 
                 path = os.path.join(config.log_dir, "localization_examples", os.path.basename(sample["rel_path"]).rstrip(".png") + f"_{sample['finding_labels']}")
+                if os.path.exists(path):
+                    shutil.rmtree(path)
                 os.makedirs(path)
                 logger.info(f"Logging to {path}")
                 plt.savefig(path + "_raw.png", bbox_inches="tight")
-                #fig.suptitle(f"IoU: {float(iou):.3}, mIoU:{miou:.3}, distance (pixel): {distance:.3f}\n Red bbox is gt, blue is prediction")
-                #plt.savefig(path + "_detailed.png", bbox_inches="tight")
                 log_some -= 1
 
     df = pd.DataFrame(results)
@@ -291,7 +294,6 @@ def compute_iou_score(config, lora_weights):
     df.to_csv(os.path.join(mask_dir, f"pgm_{config.phrase_grounding_mode}_bbox_results.csv"))
     mean_results = df.groupby("finding_labels").mean(numeric_only=True)
     mean_results.to_csv(os.path.join(mask_dir,  f"pgm_{config.phrase_grounding_mode}_bbox_results_means.csv"))
-    logger.info(df.mean())
     logger.info(df.groupby("finding_labels").mean(numeric_only=True))
 
     with open(os.path.join(mask_dir, f"pgm_{config.phrase_grounding_mode}_bbox_results.json"), "w") as file:
@@ -322,6 +324,6 @@ if __name__ == '__main__':
     world_size = torch.cuda.device_count()
 
     # mask computation
-    compute_masks(0, config, world_size, args.lora_weights)
+    #compute_masks(0, config, world_size, args.lora_weights)
 
-    compute_iou_score(config)
+    compute_iou_score(config, args.lora_weights)

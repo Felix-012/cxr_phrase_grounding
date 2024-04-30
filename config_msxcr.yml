@@ -6,6 +6,7 @@ work_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding
 data_dir: /vol/ideadata/ce90tate/data/mimic
 component_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/components
 mask_dir: /vol/ideadata/ce90tate/preliminary_masks
+log_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/log
 
 dataloading:
   batch_size: 8
@@ -16,6 +17,7 @@ datasets:
   H: 512
   W: 512
   f: 8
+
   train:
     dataset: chestxraymimic
     base_dir: /vol/ideadata/ce90tate/data/mimic
@@ -39,9 +41,13 @@ datasets:
     base_dir: /vol/ideadata/ce90tate/data/mimic
     split: mscxr
     preload: true
+    save_original_images: true
 
 sample:
   ddim_steps: 75
   iou_batch_size: 8
   n_synth_samples_per_class: 625
   seed: 4200
+  latent_C: 4
+  latent_H: 64
+  latent_W: 64

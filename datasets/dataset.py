@@ -53,7 +53,7 @@ class FOBADataset(Dataset):
         """
         if hasattr(self, "is_precomputed"):
             try:
-                ret = self._data[item]
+                ret = self.data[item]
             except TypeError:
                 raise TypeError("NoneType object is non subscriptable - did you call load_precomputed?")
             return ret

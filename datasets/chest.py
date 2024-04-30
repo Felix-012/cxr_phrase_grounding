@@ -61,9 +61,9 @@ class MimicCXRDataset(FOBADataset):
             tensor_key = os.path.basename(file.rstrip(".pt"))
             entries[tensor_key] = torch.load(os.path.join(self.precomputed_path, file))
 
-        self._data = []
+        self.data = []
         for i in range(len(entries["rel_path"])):
-            self._data.append({k: entries[k][i] for k in entries.keys()})
+            self.data.append({k: entries[k][i] for k in entries.keys()})
 
     def compute_latent(self, img, model):
         """
@@ -103,13 +103,13 @@ class MimicCXRDataset(FOBADataset):
         entries = {}
         if self._save_original_images:
             entries["img_raw"] = []
-
+        j = 0
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
-            j = 0
             try:
-                entry = self._load_images([i])
+                entry = self._load_images([j])
             except FileExistsError:
-                print(f"skipping {self.data[i]['rel_path']} - file does not exist")
+                print(f"skipping {self.data[j]['rel_path']} - file does not exist")
+                del self.data[j]
                 continue
             for k in entry.keys():
                 if entries.get(k) is None:

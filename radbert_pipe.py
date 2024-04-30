@@ -1,12 +1,7 @@
-import os
-
-from einops import repeat, rearrange
-
-os.environ['HF_HOME'] = '/vol/ideadata/ce90tate/.cache'
-
 import torch
 from transformers import AutoModel, AutoTokenizer
-from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel
+from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel, \
+    StableDiffusionInpaintPipeline
 from utils_attention import (
     cross_attn_init,
     register_cross_attention_hook,
@@ -37,7 +32,7 @@ def _load_vae(component_name, path, torch_dtype, variant):
 
 class FrozenRadBERTPipe:
     def __init__(self, use_freeze=True, path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components",variant=None,
-                 torch_dtype=torch.float32, device="cuda", save_attention=False):
+                 torch_dtype=torch.float32, device="cuda", save_attention=False, inpaint=False):
 
         self.device = device
         component_loader = {
@@ -58,7 +53,12 @@ class FrozenRadBERTPipe:
             _freeze(component_mapper["text_encoder"])
 
         print("Ensembling custom pipeline...")
-        pipe = StableDiffusionPipeline(unet=component_mapper["unet"], text_encoder=component_mapper["text_encoder"],
+        if inpaint:
+            pipe = StableDiffusionInpaintPipeline(unet=component_mapper["unet"], text_encoder=component_mapper["text_encoder"],
+                                       tokenizer=component_mapper["tokenizer"], vae=component_mapper["vae"],
+                                       scheduler=component_mapper["scheduler"],safety_checker=None, feature_extractor=None,                             requires_safety_checker=False)
+        else:
+            pipe = StableDiffusionPipeline(unet=component_mapper["unet"], text_encoder=component_mapper["text_encoder"],
                                        tokenizer=component_mapper["tokenizer"], vae=component_mapper["vae"],
                                        scheduler=component_mapper["scheduler"],safety_checker=None, feature_extractor=None,
                                        requires_safety_checker=False)

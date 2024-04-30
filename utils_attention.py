@@ -20,7 +20,9 @@ from diffusers.models.attention_processor import (
 logger = logging.get_logger(__name__)
 
 
-attn_maps = {}
+curr_attn_maps = {}
+all_attn_maps = {}
+
 
 
 @dataclass
@@ -151,11 +153,6 @@ def Transformer2DModelForward(
     ####################################################################################################
 
     # 2. Blocks
-    if self.caption_projection is not None:
-        batch_size = hidden_states.shape[0]
-        encoder_hidden_states = self.caption_projection(encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
-
     for block in self.transformer_blocks:
         if self.training and self.gradient_checkpointing:
 
@@ -296,7 +293,7 @@ def attn_call(
     # (20,4096,77) or (40,1024,77)
     if hasattr(self, "store_attn_map"):
         from einops import rearrange
-        self.attn_map = rearrange(attention_probs, 'b (h w) d -> b d h w', h=height) # (10,9216,77) -> (10,77,96,96)
+        self.attn_map = rearrange(attention_probs, '(b nh) (h w) d -> b nh d h w', h=height, b=batch_size)[batch_size//2:].mean(dim=1)
     ####################################################################################################
     hidden_states = torch.bmm(attention_probs, value)
     hidden_states = attn.batch_to_head_dim(hidden_states)
@@ -470,7 +467,9 @@ def hook_fn(name):
     def forward_hook(module, input, output):
         if hasattr(module.processor, "attn_map"):
             # attn_maps[name] = module.processor.attn_map
-            attn_maps[name] = attn_maps.get(name, torch.zeros_like(module.processor.attn_map)) + module.processor.attn_map
+            if not all_attn_maps.get(name):
+                all_attn_maps[name] = []
+            all_attn_maps[name].append(curr_attn_maps.get(name, torch.zeros_like(module.processor.attn_map)) + module.processor.attn_map)
             del module.processor.attn_map
 
     return forward_hook
@@ -524,55 +523,3 @@ def prompt2tokens(tokenizer, prompt):
         token = tokenizer.decoder[text_input_id.item()]
         tokens.append(token)
     return tokens
-
-
-def preprocess(max_height=256, max_width=256):
-    # max_height, max_width = 0, 0
-    
-    for k,v in attn_maps.items():
-        v = torch.mean(v.cpu(),axis=0).squeeze(0)
-        _, h, w = v.shape
-        max_height = max(h, max_height)
-        max_width = max(w, max_width)
-        v = F.interpolate(
-            v.to(dtype=torch.float32).unsqueeze(0),
-            size=(max_height, max_width),
-            mode='bilinear',
-            align_corners=False
-        ).squeeze(0) # (77,64,64)
-        attn_maps[k] = v
-    
-    attn_map = torch.stack(list(attn_maps.values()), axis=0)
-    attn_map = torch.mean(attn_map, axis=0)
-
-    return attn_map
-
-
-def visualize_and_save_attn_map(attn_map, tokenizer, prompt):
-    # match with tokens
-    tokens = prompt2tokens(tokenizer, prompt)
-    bos_token = tokenizer.bos_token
-    eos_token = tokenizer.eos_token
-    pad_token = tokenizer.pad_token
-    save_path = 'attn_maps'
-    if not os.path.exists(save_path):
-        os.mkdir(save_path)
-    
-    # to_pil = transforms.ToPILImage()
-    for i, (token, token_attn_map) in enumerate(zip(tokens, attn_map)):
-        if token == bos_token:
-            continue
-        if token == eos_token:
-            break
-        token = token.replace('</w>','')
-        token = f'{i}_<{token}>.jpg'
-
-        # low quality
-        # to_pil(255 * token_attn_map).save(os.path.join(save_path, token))
-        # to_pil(255 * (token_attn_map - torch.min(token_attn_map)) / (torch.max(token_attn_map) - torch.min(token_attn_map))).save(os.path.join(save_path, token))
-
-        token_attn_map = token_attn_map.cpu().numpy()
-        normalized_token_attn_map = (token_attn_map - np.min(token_attn_map)) / (np.max(token_attn_map) - np.min(token_attn_map)) * 255
-        normalized_token_attn_map = normalized_token_attn_map.astype(np.uint8)
-        image = Image.fromarray(normalized_token_attn_map)
-        image.save(os.path.join(save_path, token))

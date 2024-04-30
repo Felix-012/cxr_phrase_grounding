@@ -1,7 +1,5 @@
-import numpy as np
-from einops import reduce, rearrange, repeat
+from einops import rearrange, repeat
 import torch
-import pickle
 from functools import partial
 
 
@@ -51,12 +49,7 @@ class AttentionExtractor:
         return res
 
 
-def get_attention_masks(data_obj, attention_dir):
-    path = data_obj["seg_path"].replace("segmentation", attention_dir)
-    path = path[:-4] + ".pkl"
-    with open(path, "rb") as fp:
-        obj = pickle.load(fp)
-    return obj
+
 
 
 def print_attention_info(attention):
@@ -64,30 +57,21 @@ def print_attention_info(attention):
     for i in range(len(attention[0])):
         print(f"Layer: {i} - {attention[0][i].size()}")
 
-
-def reorder_attention_maps(attention, on_cpu=None):
-    for i in range(len(attention)):
-        for j in range(len(attention[i])):
-            layer = attention[i][j]
-            map_size = int(np.sqrt(layer.size()[-2]))
-            layer = rearrange(layer.squeeze(dim=1), 'b (h w) tok -> b tok h w', h=map_size, w=map_size)
-            if on_cpu:
-                layer = layer.cpu()
-            attention[i][j] = layer
-    return attention
-
-
-def normalize_attention_map_size(attention_maps):
-    for iteration in range(len(attention_maps)): # trough layers / diffusion steps
-        for layer in range(len(attention_maps[iteration])):
-            attention_map = attention_maps[iteration][layer]# B x num_resblocks x numrevdiff x H x W
+def normalize_attention_map_size(attention_maps, on_cpu=False):
+    if on_cpu:
+        for layer_key, layer_list in attention_maps.items():
+            for iteration in range(len(layer_list)):
+                attention_maps[layer_key][iteration] = attention_maps[layer_key][iteration].to("cpu")
+    for key, layer in attention_maps.items():  # trough layers / diffusion steps
+        for iteration in range(len(layer)):
+            attention_map = attention_maps[key][iteration]  # B x num_resblocks x numrevdiff x H x W
             if attention_map.size()[-1] != 64:
                 upsampling_factor = 64 // attention_map.size()[-1]
-                attention_map = repeat(attention_map, 'b tok h w -> b tok (h h2) (w w2)',h2=upsampling_factor, w2=upsampling_factor)
-            attention_maps[iteration][layer] = rearrange(attention_map, "b tok h w -> b 1 tok h w")
-
-        attention_maps[iteration] = rearrange(torch.cat(attention_maps[iteration], dim=1), "b depth tok h w -> b 1 depth tok h w")
-    attention_maps = torch.cat(attention_maps, dim=1)
+                attention_map = repeat(attention_map, 'b tok h w -> b tok (h h2) (w w2)', h2=upsampling_factor,
+                                       w2=upsampling_factor)
+            attention_maps[key][iteration] = attention_map
+    attention_maps = torch.cat([torch.stack(lst).unsqueeze(0) for lst in list(attention_maps.values())], dim=0)
+    attention_maps = rearrange(attention_maps, "layer depth b tok h w -> b layer depth tok h w")
     return attention_maps
 
 
@@ -102,6 +86,5 @@ def get_latent_slice(batch, opt):
 
 
 def preprocess_attention_maps(attention_masks, on_cpu=None):
-    reorder_attention_maps(attention_masks, on_cpu)
-    attention_masks = normalize_attention_map_size(attention_masks)
+    attention_masks = normalize_attention_map_size(attention_masks, on_cpu)
     return attention_masks
