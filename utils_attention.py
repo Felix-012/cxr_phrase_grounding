@@ -1,13 +1,8 @@
-import os
-import numpy as np
-from PIL import Image
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
-# from torchvision import transforms
-
 from diffusers.utils import deprecate, BaseOutput, is_torch_version, logging
 from diffusers.models.attention_processor import (
     Attention,
@@ -507,19 +502,3 @@ def set_layer_with_name_and_path(model, target_name="attn2", current_path=""):
         set_layer_with_name_and_path(layer, target_name, new_path)
     
     return model
-
-
-def prompt2tokens(tokenizer, prompt):
-    text_inputs = tokenizer(
-        prompt,
-        padding="max_length",
-        max_length=tokenizer.model_max_length,
-        truncation=True,
-        return_tensors="pt",
-    )
-    text_input_ids = text_inputs.input_ids
-    tokens = []
-    for text_input_id in text_input_ids[0]:
-        token = tokenizer.decoder[text_input_id.item()]
-        tokens.append(token)
-    return tokens

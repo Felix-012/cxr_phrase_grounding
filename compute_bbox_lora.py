@@ -1,50 +1,36 @@
 import argparse
-import random
-import shutil
-import pprint
-import time
 import os
+import shutil
+import time
+
+from datasets.dataset import add_preliminary_to_sample
+
 os.environ["TOKENIZERS_PARALLELISM"]="false"
-import cv2
 import json
-import pickle
 import numpy as np
 import pandas as pd
-import pytorch_lightning as pl
-import datetime
 import torchvision
-from tqdm import tqdm
-from PIL import Image
-from einops import rearrange
-from torchvision.utils import make_grid
 import torch
-import torch.multiprocessing as mp
 from torch import autocast
-from contextlib import contextmanager, nullcontext
 from datasets import get_dataset
 from foreground_masks import GMMMaskSuggestor
 from preliminary_masks import preprocess_attention_maps
 from visualization.utils import word_to_slice
 from visualization.utils import MIMIC_STRING_TO_ATTENTION
 from sklearn.metrics import jaccard_score
-from log import logger, log_experiment
-from log import formatter as log_formatter
+from log import logger
 from tqdm import tqdm
-import logging
-from utils_generic import get_compute_mask_args, make_exp_config, load_model_from_config, collate_batch, img_to_viz, main_setup
-from einops import reduce, rearrange, repeat
+from utils_generic import collate_batch
+from einops import rearrange, repeat
 from pytorch_lightning import seed_everything
 from mpl_toolkits.axes_grid1 import ImageGrid
-from omegaconf import OmegaConf
-from evaluation.utils import compute_metrics, compute_prediction_from_binary_mask
+from evaluation.utils import compute_prediction_from_binary_mask
 from sklearn.metrics import roc_auc_score
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
-from datasets.utils import path_to_tensor, load_config
+from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
-import torch.distributed as dist
-from diffusers import UNet2DConditionModel
 from radbert_pipe import FrozenRadBERTPipe
 from utils_attention import curr_attn_maps, all_attn_maps
 
@@ -220,17 +206,11 @@ def compute_iou_score(config, lora_weights):
                 logger.warning(f"NaN in prediction: {sample['rel_path']} -- {samples_to_path(mask_dir, samples, i)}")
                 continue
 
-            try:
-                binary_mask = repeat(mask_suggestor(sample, key="preliminary_mask"), "h w -> 3 h w")
-                binary_mask_large = resize_to_imag_size(binary_mask.float()).round()
-            except ValueError:
-                #649af982-e3af4e3a-75013d30-cdc71514-a34738fd
-                binary_mask = torch.zeros_like(ground_truth_img)
+            binary_mask = repeat(mask_suggestor(sample, key="preliminary_mask"), "h w -> 3 h w")
+            binary_mask_large = resize_to_imag_size(binary_mask.float()).round()
 
             prelim_mask = (sample["preliminary_mask"] - sample["preliminary_mask"].min())/(sample["preliminary_mask"].max() - sample["preliminary_mask"].min())
             prelim_mask_large = resize_to_imag_size(prelim_mask.unsqueeze(dim=0)).squeeze(dim=0)
-
-
 
             results["rel_path"].append(sample["rel_path"])
             results["finding_labels"].append(sample["finding_labels"])
@@ -322,8 +302,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-
-    # mask computation
-    #compute_masks(0, config, world_size, args.lora_weights)
-
+    compute_masks(0, config, world_size, args.lora_weights)
     compute_iou_score(config, args.lora_weights)
