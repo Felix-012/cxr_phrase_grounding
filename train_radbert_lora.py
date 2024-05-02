@@ -25,8 +25,6 @@ from radbert_pipe import FrozenRadBERTPipe
 from datasets import get_dataset
 from datasets.utils import load_config
 from utils_generic import collate_batch
-import torch.distributed as dist
-
 
 
 logger = get_logger(__name__, log_level="INFO")
@@ -282,7 +280,6 @@ def main():
 
     os.environ['HF_HOME'] = args.cache_dir
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    rank = dist.get_rank()
 
     import diffusers
     from diffusers import StableDiffusionPipeline
@@ -327,7 +324,7 @@ def main():
         set_seed(args.seed)
 
     # Load scheduler, tokenizer and models.
-    pipeline = FrozenRadBERTPipe()
+    pipeline = FrozenRadBERTPipe(accelerator=accelerator)
     unet = pipeline.pipe.unet
     vae = pipeline.pipe.vae
     text_encoder = pipeline.pipe.text_encoder
@@ -460,11 +457,11 @@ def main():
         val_dataset.load_precomputed(pipeline.pipe.vae)
         train_dataset.load_precomputed(pipeline.pipe.vae)
 
-        print(f"[Rank {rank}] Tokenizing training data...")
+        accelerator.print("Tokenizing training data...")
         for data in train_dataset:
             data['input_ids'], data['attention_mask'] = tokenize_captions([data['finding_labels']], is_train=True)
 
-        print(f"[Rank {rank}] Tokenizing validation data...")
+        accelerator.print("Tokenizing validation data...")
         for data in val_dataset:
             data['input_ids'], data['attention_mask'] = tokenize_captions([data['finding_labels']], is_train=True)
 
@@ -697,7 +694,7 @@ def main():
 
 
         if accelerator.is_main_process:
-            if epoch % args.validation_epochs == 0:
+            if progress_bar.n % args.validation_epochs == 0:
                 logger.info("Running validation...")
 
                 unet.eval()  # Set the model to evaluation mode
@@ -742,53 +739,51 @@ def main():
                 accelerator.log({"validation_loss": avg_validation_loss}, step=global_step)
 
                 logger.info(f"Validation completed: Avg Loss = {avg_validation_loss}")
-                if accelerator.is_main_process:
-                    if args.validation_prompt is not None and epoch % args.generation_validation_epochs == 0:
-                        logger.info(
-                            f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
-                            f" {args.validation_prompt}."
+        if accelerator.is_main_process:
+            if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
+                logger.info(
+                    f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
+                    f" {args.validation_prompt}."
+                )
+                # create pipeline
+                pipeline = FrozenRadBERTPipe().pipe
+                pipeline = pipeline.to("cuda")
+                pipeline.load_lora_weights(args.output_dir)
+                pipeline.set_progress_bar_config(disable=True)
+
+                # run inference
+                generator = torch.Generator(device="cuda")
+                if args.seed is not None:
+                    generator = generator.manual_seed(args.seed)
+                images = []
+                if torch.backends.mps.is_available():
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
+
+                with autocast_ctx:
+                    for _ in range(args.num_validation_images):
+                        images.append(
+                            pipeline(args.validation_prompt, num_inference_steps=30,
+                                     generator=generator).images[0]
                         )
-                        # create pipeline
-                        pipeline = FrozenRadBERTPipe().pipe
-                        pipeline = pipeline.to("cuda")
-                        pipeline.set_progress_bar_config(disable=True)
 
-                        # run inference
-                        generator = torch.Generator(device="cuda")
-                        if args.seed is not None:
-                            generator = generator.manual_seed(args.seed)
-                        images = []
-                        if torch.backends.mps.is_available():
-                            autocast_ctx = nullcontext()
-                        else:
-                            autocast_ctx = torch.autocast(accelerator.device.type)
+                for tracker in accelerator.trackers:
+                    if tracker.name == "tensorboard":
+                        np_images = np.stack([np.asarray(img) for img in images])
+                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                    if tracker.name == "wandb":
+                        tracker.log(
+                            {
+                                "validation": [
+                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                    for i, image in enumerate(images)
+                                ]
+                            }
+                        )
 
-                        with autocast_ctx:
-                            for _ in range(args.num_validation_images):
-                                images.append(
-                                    pipeline(args.validation_prompt, num_inference_steps=30,
-                                             generator=generator).images[0]
-                                )
-
-                        for tracker in accelerator.trackers:
-                            if tracker.name == "tensorboard":
-                                np_images = np.stack([np.asarray(img) for img in images])
-                                tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                            if tracker.name == "wandb":
-                                tracker.log(
-                                    {
-                                        "validation": [
-                                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                            for i, image in enumerate(images)
-                                        ]
-                                    }
-                                )
-
-                        del pipeline
-
-                unet.train()  # Set the model back to training mode
-
-                torch.cuda.empty_cache()
+                del pipeline
+        torch.cuda.empty_cache()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -802,47 +797,8 @@ def main():
             unet_lora_layers=unet_lora_state_dict,
             safe_serialization=True,
         )
-        # Final inference
-        # Load previous pipeline
-        if args.validation_prompt is not None:
-            pipeline = FrozenRadBERTPipe().pipe
-            pipeline = pipeline.to("cuda")
 
-            # load attention processors
-            pipeline.load_lora_weights(args.output_dir)
-
-            # run inference
-            generator = torch.Generator(device="cuda")
-            if args.seed is not None:
-                generator = generator.manual_seed(args.seed)
-            images = []
-            if torch.backends.mps.is_available():
-                autocast_ctx = nullcontext()
-            else:
-                autocast_ctx = torch.autocast(accelerator.device.type)
-
-            with autocast_ctx:
-                for _ in range(args.num_validation_images):
-                    images.append(
-                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
-                    )
-
-            for tracker in accelerator.trackers:
-                if len(images) != 0:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "test": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
-
-    accelerator.end_training()
+        accelerator.end_training()
 
 
 if __name__ == "__main__":
