@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from datasets.utils import file_to_list
 from einops import repeat
-from utils_generic import DatasetSplit, SPLIT_TO_DATASETSPLIT
+from utils.utils import DatasetSplit, SPLIT_TO_DATASETSPLIT
 from datasets.utils import path_to_tensor
 from log import logger
 

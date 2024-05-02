@@ -2,7 +2,7 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel, \
     StableDiffusionInpaintPipeline
-from utils_attention import (
+from utils.attention_maps import (
     cross_attn_init,
     register_cross_attention_hook,
     set_layer_with_name_and_path,

@@ -1,13 +1,12 @@
 import os
-import numpy as np
-from PIL import Image
-from torchvision.utils import make_grid
-import torch
-from log import logger
-from einops import reduce, rearrange, repeat
-from mpl_toolkits.axes_grid1 import ImageGrid
 import matplotlib.pyplot as plt
-
+import numpy as np
+import torch
+from PIL import Image
+from einops import reduce, rearrange
+from mpl_toolkits.axes_grid1 import ImageGrid
+from torchvision.utils import make_grid
+from log import logger
 
 MIMIC_STRING_TO_ATTENTION={"Atelectasis":
                                ["atelectasis", "atelectatic"],

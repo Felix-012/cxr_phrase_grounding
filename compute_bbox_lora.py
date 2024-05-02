@@ -20,7 +20,7 @@ from visualization.utils import MIMIC_STRING_TO_ATTENTION
 from sklearn.metrics import jaccard_score
 from log import logger
 from tqdm import tqdm
-from utils_generic import collate_batch
+from utils.utils import collate_batch
 from einops import rearrange, repeat
 from pytorch_lightning import seed_everything
 from mpl_toolkits.axes_grid1 import ImageGrid
@@ -32,7 +32,7 @@ from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
 from radbert_pipe import FrozenRadBERTPipe
-from utils_attention import curr_attn_maps, all_attn_maps
+from utils.attention_maps import curr_attn_maps, all_attn_maps
 
 
 def compute_masks(rank, config, world_size, lora_weights):

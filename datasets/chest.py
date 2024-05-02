@@ -8,7 +8,7 @@ from datasets.utils import path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
 from datasets.dataset import FOBADataset
 from log import logger
-from utils_generic import DatasetSplit
+from utils.utils import DatasetSplit
 from tqdm import tqdm
 import pickle
 
