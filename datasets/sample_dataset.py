@@ -38,7 +38,7 @@ def get_mscxr_synth_dataset(opt, dataset, label_key="finding_labels", finding_ke
     return new_dataset, list(synth_dataset.keys())
 
 
-def get_mscxr_synth_dataset_size_n(N, dataset, label_key="finding_labels", finding_key="label_text"):
+def get_mscxr_synth_dataset_size_n(n, dataset, label_key="finding_labels", finding_key="label_text"):
     synth_dataset = []
     keys = set()
     for i in range(len(dataset)):
@@ -54,8 +54,8 @@ def get_mscxr_synth_dataset_size_n(N, dataset, label_key="finding_labels", findi
         label_text = random.choice(label_texts.split("|"))
         synth_dataset.append({label: label_text})
     random.shuffle(synth_dataset)
-    while len(synth_dataset) < N:
-        logger.info(f"Artificially increasing dataset size by two because length of dataset is {len(synth_dataset)} but you requested {N}")
+    while len(synth_dataset) < n:
+        logger.info(f"Artificially increasing dataset size by two because length of dataset is {len(synth_dataset)} but you requested {n}")
         synth_dataset = synth_dataset + synth_dataset
-    synth_dataset = synth_dataset[:N]
+    synth_dataset = synth_dataset[:n]
     return synth_dataset, keys

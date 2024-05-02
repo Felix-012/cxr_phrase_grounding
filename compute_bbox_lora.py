@@ -203,7 +203,7 @@ def compute_iou_score(config, lora_weights):
         for i in range(len(samples["img"])):
             sample = {k: v[i] for k, v in samples.items()}
             try:
-                dataset.add_preliminary_to_sample(sample, samples_to_path(mask_dir, samples, i))
+                add_preliminary_to_sample(sample, samples_to_path(mask_dir, samples, i))
             except FileNotFoundError:
                 print(f"{samples_to_path(mask_dir, samples, i)} not found - skipping sample")
                 continue

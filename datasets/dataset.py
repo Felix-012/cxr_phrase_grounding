@@ -1,18 +1,17 @@
 from torch.utils.data import Dataset
-import pandas as pd
-from abc import ABC
 import os
-import random
 import torch
-import cv2
 import numpy as np
-from utils_generic import DatasetSplit
 from datasets.utils import file_to_list
-from random import shuffle
-from einops import reduce, rearrange, repeat
+from einops import repeat
 from utils_generic import DatasetSplit, SPLIT_TO_DATASETSPLIT
-from datasets.utils import resize, path_to_tensor
+from datasets.utils import path_to_tensor
 from log import logger
+
+
+def add_preliminary_to_sample(entry, path):
+    entry["preliminary_mask"] = torch.load(path)
+    return entry
 
 
 class FOBADataset(Dataset):
@@ -125,10 +124,6 @@ class FOBADataset(Dataset):
         if entry["inpainted_image"].sum() < 100:
             logger.warn("Redo sampling for missing labels")
             return self._load_images(np.random.randint(len(self)))
-        return entry
-
-    def add_preliminary_to_sample(self, entry, path):
-        entry["preliminary_mask"] = torch.load(path)
         return entry
 
     def add_preliminary_masks(self, base_path=None, sanity_check=True):

@@ -1,23 +1,15 @@
 import os
-import random
 import torch
-import cv2
 import hashlib
 import random
 import numpy as np
-import xml.etree.ElementTree as ET
 import pandas as pd
-from utils_generic import DatasetSplit
-from random import shuffle
-from datasets.utils import file_to_list, resize, path_to_tensor
+from datasets.utils import path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
 from datasets.dataset import FOBADataset
-from einops import rearrange, repeat
 from log import logger
-import scipy.ndimage as ndimage
-from utils_generic import DatasetSplit, SPLIT_TO_DATASETSPLIT, DATASETSPLIT_TO_SPLIT
+from utils_generic import DatasetSplit
 from tqdm import tqdm
-from time import time
 import pickle
 
 
@@ -169,7 +161,7 @@ class MimicCXRDataset(FOBADataset):
         self._get_split(data, splits)
 
         if self.shuffle:
-            np.random.shuffle(self.data)
+            np.random.shuffle(np.array(self.data))
 
         if self.limit_dataset is not None:
             self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
@@ -221,7 +213,7 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
         data = [dict(dicom_id=dicom_id, rel_path=os.path.join(img_path.replace(".dcm", ".jpg")), finding_labels=labels) for img_path, labels, dicom_id in zip(list(self.bbox_meta_data.paths), list(self.bbox_meta_data["category_name"]), self.bbox_meta_data.index)]
         self.data = data
         if self.shuffle:
-            np.random.shuffle(self.data)
+            np.random.shuffle(np.array(self.data))
 
         if self.limit_dataset is not None:
             self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
@@ -257,7 +249,7 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
 
         image_width, image_height = meta_data_entry[["image_width", "image_height"]]
         bboxes = meta_data_entry["bboxxywh"].split("|")
-        bbox_img = torch.zeros((image_height, image_width), dtype=bool)
+        bbox_img = torch.zeros(image_height, image_width, dtype=torch.bool)
 
         for bbox in bboxes:
             bbox = bbox.split("-")

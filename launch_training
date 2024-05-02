@@ -21,4 +21,5 @@ accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/train_radbert_lora
 --validation_prompt="An image of a chest xray" \
 --cache_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/.cache \
 --generation_validation_epochs=50 \
---train_batch_size=256
+--train_batch_size=256 \
+--resume_from_checkpoint=latest

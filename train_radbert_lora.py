@@ -532,15 +532,7 @@ def main():
 
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
-        if args.resume_from_checkpoint != "latest":
-            path = os.path.basename(args.resume_from_checkpoint)
-        else:
-            # Get the most recent checkpoint
-            dirs = os.listdir(args.output_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1] if len(dirs) > 0 else None
-
+        path = get_latest_directory(args)
         if path is None:
             accelerator.print(
                 f"Checkpoint '{args.resume_from_checkpoint}' does not exist. Starting a new training run."
@@ -748,7 +740,7 @@ def main():
                 # create pipeline
                 pipeline = FrozenRadBERTPipe().pipe
                 pipeline = pipeline.to("cuda")
-                pipeline.load_lora_weights(args.output_dir)
+                pipeline.load_lora_weights(os.path.join(args.output_dir, get_latest_directory(args)))
                 pipeline.set_progress_bar_config(disable=True)
 
                 # run inference
@@ -799,6 +791,17 @@ def main():
         )
 
         accelerator.end_training()
+
+
+def get_latest_directory(args):
+    if args.resume_from_checkpoint != "latest":
+        return os.path.basename(args.resume_from_checkpoint)
+    else:
+        # Get the most recent checkpoint
+        dirs = os.listdir(args.output_dir)
+        dirs = [d for d in dirs if d.startswith("checkpoint")]
+        dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
+        return dirs[-1] if len(dirs) > 0 else None
 
 
 if __name__ == "__main__":

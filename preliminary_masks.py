@@ -3,6 +3,35 @@ import torch
 from functools import partial
 
 
+def all_mean(inp):
+    return inp.mean(dim=(0, 1, 2), keepdim=True)
+
+
+def diffusion_steps_mean(x, steps):
+    assert x.size()[2] == 1
+    return x[-steps:, :, 0].mean(dim=(0, 1), keepdim=True)
+
+
+def relevant_token_step_mean(x, tok_idx, steps):
+    return x[-steps:, :, tok_idx:(tok_idx+1)].mean(dim=(0, 1), keepdim=True)
+
+
+def all_token_mean(x, steps, max_token=None):
+    return x[-steps:,:,:max_token].mean(dim=(0, 1), keepdim=True)
+
+
+def multi_relevant_token_step_mean(x, tok_idx, steps):
+    res = None
+    for tok_id in tok_idx:
+        if res is None:
+            res = x[-steps:, :, tok_id:(tok_id+1)].mean(dim=(0, 1), keepdim=True)
+        else:
+            res += x[-steps:, :, tok_id:(tok_id+1)].mean(dim=(0, 1), keepdim=True)
+
+    res = res.mean(dim=(0,1), keepdim=True)
+    return res
+
+
 class AttentionExtractor:
     def __init__(self, function=None, *args, **kwargs):
         if isinstance(function, str):
@@ -23,33 +52,6 @@ class AttentionExtractor:
         out = self.reduction_function(inp, *args, **kwargs)
         assert out.ndim == 5
         return out
-
-    def all_mean(self, inp):
-        return inp.mean(dim=(0, 1, 2), keepdim=True)
-
-    def diffusion_steps_mean(self, x, steps):
-        assert x.size()[2] == 1
-        return x[-steps:, :, 0].mean(dim=(0, 1), keepdim=True)
-
-    def relevant_token_step_mean(self, x, tok_idx, steps):
-        return x[-steps:, :, tok_idx:(tok_idx+1)].mean(dim=(0, 1), keepdim=True)
-
-    def all_token_mean(self, x, steps, max_token=None):
-        return x[-steps:,:,:max_token].mean(dim=(0, 1), keepdim=True)
-
-    def multi_relevant_token_step_mean(self, x, tok_idx, steps):
-        res = None
-        for tok_id in tok_idx:
-            if res is None:
-                res = x[-steps:, :, tok_id:(tok_id+1)].mean(dim=(0, 1), keepdim=True)
-            else:
-                res += x[-steps:, :, tok_id:(tok_id+1)].mean(dim=(0, 1), keepdim=True)
-
-        res = res.mean(dim=(0,1), keepdim=True)
-        return res
-
-
-
 
 
 def print_attention_info(attention):
@@ -86,5 +88,4 @@ def get_latent_slice(batch, opt):
 
 
 def preprocess_attention_maps(attention_masks, on_cpu=None):
-    attention_masks = normalize_attention_map_size(attention_masks, on_cpu)
-    return attention_masks
+    return normalize_attention_map_size(attention_masks, on_cpu)

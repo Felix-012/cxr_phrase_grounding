@@ -1,7 +1,5 @@
 from .chest import MimicCXRDataset, MimicCXRDatasetMSBBOX
 from .mscoco import MSCOCODataset, MSCOCOBBoxDataset
-from copy import deepcopy
-
 
 def get_dataset(opt, split=None):
     datasets = {"chestxraymimic": MimicCXRDataset, "chestxraymimicbbox": MimicCXRDatasetMSBBOX, "mscoco": MSCOCODataset, "mscocobbox": MSCOCOBBoxDataset}

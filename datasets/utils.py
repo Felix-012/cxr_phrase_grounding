@@ -1,7 +1,7 @@
 import torch
 import scipy.ndimage as ndimage
 import cv2
-from einops import rearrange, repeat, reduce
+from einops import rearrange
 import yaml
 from ml_collections import ConfigDict
 import os.path
@@ -18,7 +18,6 @@ def path_to_tensor(path, normalize=True):
 
 
 def file_to_list(path):
-    lines = []
     with open(path) as fp:
         lines = fp.readlines()
     return lines
