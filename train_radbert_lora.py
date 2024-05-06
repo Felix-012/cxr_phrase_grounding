@@ -87,7 +87,7 @@ def main():
         set_seed(args.seed)
 
     # Load scheduler, tokenizer and models.
-    pipeline = FrozenRadBERTPipe(accelerator=accelerator)
+    pipeline = FrozenRadBERTPipe(path=args.pretrained_model_name_or_path, accelerator=accelerator)
     unet = pipeline.pipe.unet
     vae = pipeline.pipe.vae
     text_encoder = pipeline.pipe.text_encoder
@@ -469,7 +469,7 @@ def main():
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
-                pipeline = FrozenRadBERTPipe().pipe
+                pipeline = FrozenRadBERTPipe(path=args.pretrained_model_name_or_path).pipe
                 pipeline = pipeline.to("cuda")
                 pipeline.load_lora_weights(os.path.join(args.output_dir, get_latest_directory(args)))
                 pipeline.set_progress_bar_config(disable=True)
