@@ -10,7 +10,7 @@
 #SBATCH --export=NONE
 unset SLURM_EXPORT_ENV
 
-source ~/.bashrc
+cd $WORK/cxr_phrase_grounding
 
 # Set proxy to access internet from the node
 export http_proxy=http://proxy:80
@@ -23,12 +23,6 @@ module load cuda/11.4.2
 
 # Conda
 source activate chest
-
-# create a temporary job dir on $WORK
-mkdir ${WORK}/$SLURM_JOB_ID
-
-# copy input file from location where job was submitted, and run
-cp -r ${SLURM_SUBMIT_DIR}/. .
 
 # Run training script (with data copied to node)
 srun launch_training_hpc
