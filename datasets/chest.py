@@ -138,7 +138,7 @@ class MimicCXRDataset(FOBADataset):
 
     @property
     def meta_data_path(self):
-        return os.path.join(self.base_dir, self._csv_file)
+        return os.path.join(os.path.expandvars(self.base_dir), self._csv_file)
 
     @property
     def meta_data(self):
