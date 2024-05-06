@@ -1,4 +1,7 @@
 import os
+from random import random
+import numpy as np
+from diffusers.utils.torch_utils import is_compiled_module
 
 
 def get_latest_directory(args):
@@ -10,6 +13,34 @@ def get_latest_directory(args):
         dirs = [d for d in dirs if d.startswith("checkpoint")]
         dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
         return dirs[-1] if len(dirs) > 0 else None
+
+def tokenize_captions(caption_data, tokenizer, is_train=True):
+    captions = []
+
+    for caption in caption_data:
+        if isinstance(caption, str):
+            if '|' in caption:
+                caption = caption.split('|')
+                captions.append(random.choice(caption) if is_train else caption[0])
+                continue
+            captions.append(caption)
+        elif isinstance(caption, (list, np.ndarray)):
+            # take a random caption if there are multiple
+            captions.append(random.choice(caption) if is_train else caption[0])
+        else:
+            raise ValueError(
+                f"Caption column `{captions}` should contain either strings or lists of strings."
+            )
+    inputs = tokenizer(
+        captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    )
+    return inputs.input_ids.to("cuda"), inputs.attention_mask.to("cuda")
+
+
+def unwrap_model(model, accelerator):
+    model = accelerator.unwrap_model(model)
+    model = model._orig_mod if is_compiled_module(model) else model
+    return model
 
 def get_parser_arguments_train_lora(parser):
     parser.add_argument(
@@ -246,3 +277,5 @@ def get_parser_arguments_train_lora(parser):
         default=4,
         help="The dimension of the LoRA update matrices.",
     )
+
+    return parser

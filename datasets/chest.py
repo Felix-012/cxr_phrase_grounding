@@ -1,5 +1,3 @@
-import os
-import torch
 import hashlib
 import random
 import numpy as np
@@ -9,8 +7,12 @@ from torchvision.transforms import Resize, CenterCrop, Compose
 from datasets.dataset import FOBADataset
 from log import logger
 from utils.utils import DatasetSplit
+import torch
+import torch.distributed as dist
+from torch.utils.data import DataLoader, DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+import os, pickle
 from tqdm import tqdm
-import pickle
 
 
 class MimicCXRDataset(FOBADataset):
@@ -23,6 +25,7 @@ class MimicCXRDataset(FOBADataset):
         self._build_dataset()
         self.opt = opt
         self._precomputed_path = None
+        self.precomputed_base_dir=dataset_args.get("precomputed_base_dir")
         self._save_original_images = dataset_args.get("save_original_images", False)
         self.text_label_key = dataset_args.get("text_label_key", "impression")
 
@@ -31,7 +34,7 @@ class MimicCXRDataset(FOBADataset):
         if self._precomputed_path is None:
             name = "".join([x["rel_path"] for x in self.data])
             name = hashlib.sha1(name.encode("utf-8")).hexdigest()
-            precompute_path = os.path.join(self.base_dir, str(name))
+            precompute_path = os.path.join(self.precomputed_base_dir, str(name))
             self._precomputed_path = precompute_path
         return self._precomputed_path
 
@@ -132,6 +135,7 @@ class MimicCXRDataset(FOBADataset):
         for key in data_tensors.keys():
             torch.save(data_tensors[key], os.path.join(path, f"{key}.pt"))
 
+
     @property
     def meta_data_path(self):
         return os.path.join(self.base_dir, self._csv_file)
@@ -146,19 +150,31 @@ class MimicCXRDataset(FOBADataset):
             return self._meta_data
 
     def _build_dataset(self):
-        filtered_meta_data = self.meta_data.dropna(subset=['path', 'Finding Labels'])
-        paths = filtered_meta_data['path'].to_list()
-        labels = filtered_meta_data['Finding Labels'].to_list()
+        try:
+            filtered_meta_data = self.meta_data.dropna(subset=['path', 'Finding Labels'])
+            paths = filtered_meta_data['path'].to_list()
+            labels = filtered_meta_data['Finding Labels'].to_list()
+            data = [
+                dict(
+                    rel_path=os.path.join(img_path.replace(".dcm", ".jpg")),
+                    finding_labels=label
+                )
+                for img_path, label in zip(paths, labels)
+            ]
+        except KeyError:
+            filtered_meta_data = self.meta_data.dropna(subset=['path'])
+            paths = filtered_meta_data['path'].to_list()
+            data = [
+                dict(
+                    rel_path=os.path.join(img_path.replace(".dcm", ".jpg")),
+                )
+                for img_path in paths]
 
-        data = [
-            dict(
-                rel_path=os.path.join(img_path.replace(".dcm", ".jpg")),
-                finding_labels=label
-            )
-            for img_path, label in zip(paths, labels)
-        ]
-        splits = self.meta_data["split"].astype(int)
-        self._get_split(data, splits)
+        try:
+            splits = self.meta_data["split"].astype(int)
+            self._get_split(data, splits)
+        except KeyError:
+            self.data = data
 
         if self.shuffle:
             np.random.shuffle(np.array(self.data))

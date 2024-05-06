@@ -4,7 +4,6 @@ import argparse
 import logging
 import math
 import os
-import random
 import shutil
 from contextlib import nullcontext
 from pathlib import Path
@@ -25,7 +24,7 @@ from radbert_pipe import FrozenRadBERTPipe
 from datasets import get_dataset
 from datasets.utils import load_config
 from utils.utils import collate_batch
-from utils.utils_train import get_latest_directory, get_parser_arguments_train_lora
+from utils.utils_train import get_latest_directory, get_parser_arguments_train_lora, tokenize_captions, unwrap_model
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -52,7 +51,6 @@ def main():
     from diffusers.training_utils import cast_training_params, compute_snr
     from diffusers.utils import check_min_version, convert_state_dict_to_diffusers
     from diffusers.utils.import_utils import is_xformers_available
-    from diffusers.utils.torch_utils import is_compiled_module
 
     # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
     check_min_version("0.28.0.dev0")
@@ -181,37 +179,6 @@ def main():
         eps=args.adam_epsilon,
     )
 
-
-    # Preprocessing the datasets.
-    # We need to tokenize input captions
-    def tokenize_captions(caption_data, is_train=True):
-        captions = []
-
-        for caption in caption_data:
-            if isinstance(caption, str):
-                if '|' in caption:
-                    caption = caption.split('|')
-                    captions.append(random.choice(caption) if is_train else caption[0])
-                    continue
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
-                raise ValueError(
-                    f"Caption column `{captions}` should contain either strings or lists of strings."
-                )
-        inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-        )
-        return inputs.input_ids.to("cuda"), inputs.attention_mask.to("cuda")
-
-
-    def unwrap_model(model):
-        model = accelerator.unwrap_model(model)
-        model = model._orig_mod if is_compiled_module(model) else model
-        return model
-
     config = load_config(args.config)
     with accelerator.main_process_first():
 
@@ -224,11 +191,11 @@ def main():
 
         accelerator.print("Tokenizing training data...")
         for data in train_dataset:
-            data['input_ids'], data['attention_mask'] = tokenize_captions([data['finding_labels']], is_train=True)
+            data['input_ids'], data['attention_mask'] = tokenize_captions([data['impression']], tokenizer, is_train=True)
 
         accelerator.print("Tokenizing validation data...")
         for data in val_dataset:
-            data['input_ids'], data['attention_mask'] = tokenize_captions([data['finding_labels']], is_train=True)
+            data['input_ids'], data['attention_mask'] = tokenize_captions([data['impression']], tokenizer, is_train=True)
 
 
         val_dataloader = torch.utils.data.DataLoader(
@@ -321,7 +288,6 @@ def main():
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
-    epoch = 0
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
@@ -430,7 +396,7 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
 
-                        unwrapped_unet = unwrap_model(unet)
+                        unwrapped_unet = unwrap_model(unet, accelerator)
                         unet_lora_state_dict = convert_state_dict_to_diffusers(
                             get_peft_model_state_dict(unwrapped_unet)
                         )
@@ -547,7 +513,7 @@ def main():
     if accelerator.is_main_process:
         unet = unet.to(torch.float32)
 
-        unwrapped_unet = unwrap_model(unet)
+        unwrapped_unet = unwrap_model(unet, accelerator)
         unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
         StableDiffusionPipeline.save_lora_weights(
             save_directory=args.output_dir,
