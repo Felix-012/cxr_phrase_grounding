@@ -34,7 +34,7 @@ class MimicCXRDataset(FOBADataset):
         if self._precomputed_path is None:
             name = "".join([x["rel_path"] for x in self.data])
             name = hashlib.sha1(name.encode("utf-8")).hexdigest()
-            precompute_path = os.path.join(self.precomputed_base_dir, str(name))
+            precompute_path = os.path.join(os.path.expandvars(self.precomputed_base_dir), str(name))
             self._precomputed_path = precompute_path
         return self._precomputed_path
 
