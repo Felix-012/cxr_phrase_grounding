@@ -24,9 +24,6 @@ datasets:
     precomputed_base_dir: /vol/ideadata/ce90tate/data/mimic
     split: mscxr
     preload: true
-    limit_dataset:
-      - 0
-      - 256
     shuffle: true
     save_original_images: false
     dataset_csv: /vol/ideadata/ce90tate/data/mimic/cxr-record-list-impressions-no_p19.csv
@@ -38,7 +35,7 @@ datasets:
     split: mscxr
     limit_dataset:
       - 0
-      - 256
+      - 25600
     preload: true
     dataset_csv: /vol/ideadata/ce90tate/data/mimic/cxr-record-list-impressions-no_p19.csv
 
