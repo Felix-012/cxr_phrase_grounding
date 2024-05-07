@@ -352,6 +352,8 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
+                print(f"noisy latents: {noisy_latents.shape}")
+                print(f"encoder hidden states: {encoder_hidden_states.shape}")
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
 
                 if args.snr_gamma is None:
