@@ -179,7 +179,7 @@ class MimicCXRDataset(FOBADataset):
             splits = self.meta_data["split"].astype(int)
             self._get_split(data, splits)
         except KeyError:
-            print(f"build dataset: {data}")
+            print(f"build dataset: {len(data)}")
             self.data = data
 
         if self.shuffle:
@@ -199,6 +199,7 @@ class MimicCXRDataset(FOBADataset):
     def _load_images(self, index):
         assert len(index)
         entry = self.data[index[0]].copy()
+        print(f"load_images: {entry}")
         entry["dicom_id"] = os.path.basename(entry["rel_path"]).rstrip(".jpg")
         img_path = os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg"))
         entry["img"] = self._load_image(img_path)
