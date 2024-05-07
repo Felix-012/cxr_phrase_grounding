@@ -18,13 +18,14 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from packaging import version
 from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
 from radbert_pipe import FrozenRadBERTPipe
 from datasets import get_dataset
 from datasets.utils import load_config
 from utils.utils import collate_batch
 from utils.utils_train import get_latest_directory, get_parser_arguments_train_lora, tokenize_captions, unwrap_model
+from sklearn.model_selection import train_test_split
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -182,32 +183,49 @@ def main():
     config = load_config(args.config)
     with accelerator.main_process_first():
 
-        train_dataset = get_dataset(config, "train")
-        val_dataset = get_dataset(config, "val")
+        dataset = get_dataset(config, "train")
+
+        # Splitting dataset into train and validation subsets
+        train_idx, val_idx = train_test_split(
+            range(len(dataset)),
+            test_size=config.validation_split,
+            random_state=42
+        )
+
+        if hasattr(dataset, 'load_precomputed'):
+            dataset.load_precomputed(pipeline.pipe.vae)
+
+        train_dataset = Subset(dataset, train_idx)
+        val_dataset = Subset(dataset, val_idx)
 
 
-        val_dataset.load_precomputed(pipeline.pipe.vae)
-        train_dataset.load_precomputed(pipeline.pipe.vae)
 
+        # Tokenizing data
         accelerator.print("Tokenizing training data...")
         for data in train_dataset:
-            data['input_ids'], data['attention_mask'] = tokenize_captions([data['impression']], tokenizer, is_train=True)
+            impression = data['impression'] if 'impression' in data else None
+            if impression:
+                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
 
-        accelerator.print("Tokenizing validation data...")
         for data in val_dataset:
-            data['input_ids'], data['attention_mask'] = tokenize_captions([data['impression']], tokenizer, is_train=True)
+            impression = data['impression'] if 'impression' in data else None
+            if impression:
+                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
 
 
-        val_dataloader = torch.utils.data.DataLoader(
-            val_dataset,
+        # Repeat the tokenization for validation dataset if needed
+
+        # Create dataloaders for training and validation datasets
+        train_dataloader = DataLoader(
+            train_dataset,
             shuffle=True,
             collate_fn=collate_batch,
             batch_size=config.dataloading.batch_size,
             num_workers=config.dataloading.num_workers,
         )
 
-        train_dataloader = torch.utils.data.DataLoader(
-            train_dataset,
+        val_dataloader = DataLoader(
+            val_dataset,
             shuffle=True,
             collate_fn=collate_batch,
             batch_size=config.dataloading.batch_size,

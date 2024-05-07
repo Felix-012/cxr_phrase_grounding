@@ -12,7 +12,7 @@ accelerate launch $WORK/cxr_phrase_grounding/train_radbert_lora.py \
 --checkpointing_steps=1000 \
 --validation_epochs=100 \
 --seed=1337 \
---config=config_msxcr.yml \
+--config=config_msxcr_hpc.yml \
 --validation_prompt="An image of a chest xray" \
 --cache_dir=$WORK/cxr_phrase_grounding/.cache \
 --generation_validation_epochs=1000 \

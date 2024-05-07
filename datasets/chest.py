@@ -57,7 +57,6 @@ class MimicCXRDataset(FOBADataset):
             entries[tensor_key] = torch.load(os.path.join(self.precomputed_path, file))
 
         self.data = []
-        print(entries)
         for i in range(len(entries["rel_path"])):
             self.data.append({k: entries[k][i] for k in entries.keys()})
 
@@ -106,7 +105,6 @@ class MimicCXRDataset(FOBADataset):
             print("start precomputing")
             try:
                 entry = self._load_images([j])
-                print(entry)
             except FileExistsError:
                 print(f"skipping {self.data[j]['rel_path']} - file does not exist")
                 del self.data[j]
@@ -179,7 +177,6 @@ class MimicCXRDataset(FOBADataset):
             splits = self.meta_data["split"].astype(int)
             self._get_split(data, splits)
         except KeyError:
-            print(f"build dataset: {len(data)}")
             self.data = data
 
         if self.shuffle:
@@ -199,7 +196,6 @@ class MimicCXRDataset(FOBADataset):
     def _load_images(self, index):
         assert len(index)
         entry = self.data[index[0]].copy()
-        print(f"load_images: {entry}")
         entry["dicom_id"] = os.path.basename(entry["rel_path"]).rstrip(".jpg")
         img_path = os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg"))
         entry["img"] = self._load_image(img_path)

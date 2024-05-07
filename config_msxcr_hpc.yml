@@ -1,12 +1,12 @@
 latent_attention_masks: False
 phrase_grounding_mode: False
 filter_bad_impressions: False
-root: /vol/ideadata/ce90tate
-work_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding
-data_dir: /vol/ideadata/ce90tate/data/mimic
-component_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/components
-mask_dir: /vol/ideadata/ce90tate/preliminary_masks
-log_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/log
+root: $WORK
+work_dir: $WORK/cxr_phrase_grounding
+data_dir: $WORK/data/mimic
+component_dir: $WORK/cxr_phrase_grounding/components
+mask_dir: $WORK/preliminary_masks
+log_dir: $WORK/cxr_phrase_grounding/log
 validation_split: 0.1
 
 dataloading:
@@ -21,8 +21,8 @@ datasets:
 
   train:
     dataset: chestxraymimic
-    base_dir: /vol/ideadata/ce90tate/data/mimic
-    precomputed_base_dir: /vol/ideadata/ce90tate/data/mimic
+    base_dir: $WORK/data/mimic
+    precomputed_base_dir: $WORK/data/mimic
     split: mscxr
     preload: true
     shuffle: true
@@ -31,7 +31,7 @@ datasets:
 
   test:
     dataset: chestxraymimicbbox
-    base_dir: /vol/ideadata/ce90tate/data/mimic
+    base_dir: $WORK/data/mimic
     split: mscxr
     preload: true
     save_original_images: true
