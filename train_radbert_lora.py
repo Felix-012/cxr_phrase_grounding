@@ -61,7 +61,7 @@ def main():
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=str(logging_dir))
-    kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=800))
+    kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=8000))
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,

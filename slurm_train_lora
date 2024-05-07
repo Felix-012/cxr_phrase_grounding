@@ -15,6 +15,7 @@ cd $WORK/cxr_phrase_grounding
 # Set proxy to access internet from the node
 export http_proxy=http://proxy:80
 export https_proxy=http://proxy:80
+export NCCL_ASYNC_ERROR_HANDLING=1
 
 module purge
 module load python/3.9-anaconda
