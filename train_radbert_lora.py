@@ -217,7 +217,6 @@ def main():
                 data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
 
 
-        # Repeat the tokenization for validation dataset if needed
 
         # Create dataloaders for training and validation datasets
         train_dataloader = DataLoader(
@@ -337,6 +336,10 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
+                print(f"input_ids: {len(batch['input_ids'])}")
+                print(f"impression: {len(batch['impression'])}")
+                print(f"attention_mask: {len(batch['attention_mask'])}")
+                print(f"img: {len(batch['img'])}")
                 encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
                 # Get the target for loss depending on the prediction type
