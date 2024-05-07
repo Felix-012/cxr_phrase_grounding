@@ -57,6 +57,7 @@ class MimicCXRDataset(FOBADataset):
             entries[tensor_key] = torch.load(os.path.join(self.precomputed_path, file))
 
         self.data = []
+        print(entries)
         for i in range(len(entries["rel_path"])):
             self.data.append({k: entries[k][i] for k in entries.keys()})
 
