@@ -30,7 +30,7 @@ datasets:
     limit_dataset:
       - 0
       - 512
-    dataset_csv: cxr-record-list-impressions-no_p19.csv
+    dataset_csv: mimic_metadata_preprocessed.csv
 
   test:
     dataset: chestxraymimicbbox
