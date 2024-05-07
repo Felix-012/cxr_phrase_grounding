@@ -179,7 +179,7 @@ class MimicCXRDataset(FOBADataset):
             splits = self.meta_data["split"].astype(int)
             self._get_split(data, splits)
         except KeyError:
-            print(f"build dataset: {self.data}")
+            print(f"build dataset: {data}")
             self.data = data
 
         if self.shuffle:
