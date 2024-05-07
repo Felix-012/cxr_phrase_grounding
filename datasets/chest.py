@@ -100,9 +100,13 @@ class MimicCXRDataset(FOBADataset):
         if self._save_original_images:
             entries["img_raw"] = []
         j = 0
+
+
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
+            print("start precomputing")
             try:
                 entry = self._load_images([j])
+                print(entry)
             except FileExistsError:
                 print(f"skipping {self.data[j]['rel_path']} - file does not exist")
                 del self.data[j]
@@ -175,6 +179,7 @@ class MimicCXRDataset(FOBADataset):
             splits = self.meta_data["split"].astype(int)
             self._get_split(data, splits)
         except KeyError:
+            print(f"build dataset: {self.data}")
             self.data = data
 
         if self.shuffle:
