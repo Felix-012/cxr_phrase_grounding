@@ -54,20 +54,11 @@ class MimicCXRDataset(FOBADataset):
             if not file.endswith(".pt"):
                 continue
             tensor_key = os.path.basename(file.rstrip(".pt"))
-            entries[tensor_key] = torch.load(os.path.join(self.precomputed_path, file))
+            entries[tensor_key] = torch.load(os.path.join(self.precomputed_path, file), map_location='cpu')
 
         self.data = []
         for i in range(len(entries["rel_path"])):
-            for k in entries.keys():
-                if k == "img":
-                    for item in entries[k]:
-                        item.latent_dist.logvar = item.latent_dist.logvar.cpu()
-                        item.latent_dist.mean = item.latent_dist.mean.cpu()
-                        item.latent_dist.parameters = item.latent_dist.parameters.cpu()
-                        item.latent_dist.std = item.latent_dist.std.cpu()
-                        item.latent_dist.var = item.latent_dist.var.cpu()
-                self.data.append({k: entries[k][i]})
-        del entries
+            self._data.append({k: entries[k][i] for k in entries.keys()})
 
     def compute_latent(self, img, model):
         """

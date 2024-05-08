@@ -26,4 +26,4 @@ module load cuda/11.4.2
 source activate chest
 
 # Run training script (with data copied to node)
-srun launch_training_hpc
+./launch_training_hpc
