@@ -207,14 +207,19 @@ def main():
         # Tokenizing data
         accelerator.print("Tokenizing training data...")
         for data in train_dataset:
+            print(data["impression"])
             impression = data['impression'] if 'impression' in data else None
             if impression:
                 data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
+            else:
+                raise KeyError("No impression saved")
 
         for data in val_dataset:
             impression = data['impression'] if 'impression' in data else None
             if impression:
                 data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
+            else:
+                raise KeyError("No impression saved")
 
 
 
