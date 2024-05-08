@@ -27,10 +27,7 @@ datasets:
     preload: true
     shuffle: true
     save_original_images: false
-    limit_dataset:
-      - 0
-      - 512
-    dataset_csv: mimic_metadata_preprocessed.csv
+    dataset_csv: cxr-record-list-impressions-no_p19_pruned.csv
 
   test:
     dataset: chestxraymimicbbox

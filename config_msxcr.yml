@@ -21,7 +21,7 @@ datasets:
 
   train:
     dataset: chestxraymimic
-    base_dir: /vol/ideadata/ed52egek/data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0
+    base_dir: /vol/ideadata/ce90tate/data/mimic
     precomputed_base_dir: /vol/ideadata/ce90tate/data/mimic
     split: mscxr
     preload: true
@@ -30,7 +30,7 @@ datasets:
     limit_dataset:
       - 0
       - 512
-    dataset_csv: mimic_metadata_preprocessed.csv
+    dataset_csv: cxr-record-list-impressions-no_p19_pruned.csv
 
   test:
     dataset: chestxraymimicbbox
