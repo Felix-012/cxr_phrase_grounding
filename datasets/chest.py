@@ -58,7 +58,7 @@ class MimicCXRDataset(FOBADataset):
 
         self.data = []
         for i in range(len(entries["rel_path"])):
-            self._data.append({k: entries[k][i] for k in entries.keys()})
+            self.data.append({k: entries[k][i] for k in entries.keys()})
 
     def compute_latent(self, img, model):
         """
