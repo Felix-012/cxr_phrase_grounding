@@ -58,7 +58,16 @@ class MimicCXRDataset(FOBADataset):
 
         self.data = []
         for i in range(len(entries["rel_path"])):
-            self.data.append({k: entries[k][i] for k in entries.keys()})
+            for k in entries.keys():
+                if k == "img":
+                    for item in entries[k]:
+                        item.latent_dist.logvar = item.latent_dist.logvar.cpu()
+                        item.latent_dist.mean = item.latent_dist.mean.cpu()
+                        item.latent_dist.parameters = item.latent_dist.parameters.cpu()
+                        item.latent_dist.std = item.latent_dist.std.cpu()
+                        item.latent_dist.var = item.latent_dist.var.cpu()
+                self.data.append({k: entries[k][i]})
+        del entries
 
     def compute_latent(self, img, model):
         """
