@@ -227,7 +227,7 @@ def main():
             train_dataset,
             shuffle=True,
             collate_fn=collate_batch,
-            batch_size=config.dataloading.batch_size,
+            batch_size=args.train_batch_size,
             num_workers=config.dataloading.num_workers,
         )
 
@@ -235,7 +235,7 @@ def main():
             val_dataset,
             shuffle=True,
             collate_fn=collate_batch,
-            batch_size=config.dataloading.batch_size,
+            batch_size=args.train_batch_size,
             num_workers=config.dataloading.num_workers,
         )
 
