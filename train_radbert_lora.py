@@ -337,13 +337,9 @@ def main():
 
                 # Add noise to the latents according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(dtype=weight_dtype)
 
                 # Get the text embedding for conditioning
-                print(f"input_ids: {len(batch['input_ids'])}")
-                print(f"impression: {len(batch['impression'])}")
-                print(f"attention_mask: {len(batch['attention_mask'])}")
-                print(f"img: {len(batch['img'])}")
                 encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
                 # Get the target for loss depending on the prediction type
@@ -359,8 +355,6 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                print(f"noisy latents: {noisy_latents.shape}")
-                print(f"encoder hidden states: {encoder_hidden_states.shape}")
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
 
                 if args.snr_gamma is None:

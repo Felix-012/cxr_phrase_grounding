@@ -32,7 +32,7 @@ def _load_vae(component_name, path, torch_dtype, variant):
 
 class FrozenRadBERTPipe:
     def __init__(self, use_freeze=True, path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components",variant=None,
-                 torch_dtype=torch.float32, device="cuda", save_attention=False, inpaint=False, accelerator=None):
+                 torch_dtype=torch.float16, device="cuda", save_attention=False, inpaint=False, accelerator=None):
         self.device = device
         component_loader = {
             "text_encoder": _load_text_encoder,
