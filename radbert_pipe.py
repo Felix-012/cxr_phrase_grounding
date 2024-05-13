@@ -49,7 +49,7 @@ class FrozenCustomPipe:
                 accelerator.print(f"Loading {component_name}...")
             else:
                 print(f"Loading {component_name}...")
-            if component_name is "tokenizer" or "text_encoder":
+            if component_name == "tokenizer" or component_name == "text_encoder":
                 component = component_loader.get(component_name)(component_name, os.path.join(path, llm_name),
                                                                  torch_dtype, variant)
             else:

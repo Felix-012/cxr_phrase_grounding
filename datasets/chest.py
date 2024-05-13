@@ -54,7 +54,7 @@ class MimicCXRDataset(FOBADataset):
             if not file.endswith(".pt"):
                 continue
             tensor_key = os.path.basename(file.rstrip(".pt"))
-            entries[tensor_key] = torch.load(os.path.join(self.precomputed_path, file), map_location='cpu')
+            entries[tensor_key] = torch.load(os.path.join(self.precomputed_path, file))
 
         self.data = []
         for i in range(len(entries["rel_path"])):
