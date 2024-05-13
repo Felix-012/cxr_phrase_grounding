@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 from datasets import MimicCXRDataset, get_dataset
 from datasets.utils import load_config
-from radbert_pipe import FrozenRadBERTPipe
+from radbert_pipe import FrozenCustomPipe
 
 # Assuming necessary imports and class definitions like `MimicCXRDataset` are available here.
 
@@ -39,6 +39,6 @@ if __name__ == "__main__":
 
     CONFIG_PATH= '/vol/ideadata/ce90tate/cxr_phrase_grounding/config_msxcr.yml'
 
-    vae = FrozenRadBERTPipe().pipe.vae
+    vae = FrozenCustomPipe().pipe.vae
     vae.requires_grad_(False)
     precompute_images(CONFIG_PATH, vae)

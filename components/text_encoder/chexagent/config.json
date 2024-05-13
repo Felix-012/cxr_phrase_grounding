@@ -1,0 +1,54 @@
+{
+  "_name_or_path": "StanfordAIMI/CheXagent-8b",
+  "architectures": [
+    "CheXagentForConditionalGeneration"
+  ],
+  "initializer_factor": 1.0,
+  "initializer_range": 0.02,
+  "model_type": "chexagent",
+  "num_max_images": 2,
+  "num_query_tokens": 128,
+  "qformer_config": {
+    "model_type": "chexagent_qformer",
+    "vocab_size": 30523
+  },
+  "text_config": {
+    "_name_or_path": "mistralai/Mistral-7B-v0.1",
+    "architectures": [
+      "MistralForCausalLM"
+    ],
+    "attention_bias": false,
+    "bos_token_id": 1,
+    "hidden_act": "silu",
+    "hidden_size": 4096,
+    "initializer_range": 0.02,
+    "intermediate_size": 14336,
+    "max_position_embeddings": 32768,
+    "model_type": "mistral",
+    "num_attention_heads": 32,
+    "num_hidden_layers": 32,
+    "num_key_value_heads": 8,
+    "pad_token_id": null,
+    "pretraining_tp": 1,
+    "rms_norm_eps": 1e-05,
+    "rope_scaling": null,
+    "rope_theta": 10000.0,
+    "sliding_window": 4096,
+    "tie_word_embeddings": false,
+    "torch_dtype": "bfloat16",
+    "vocab_size": 32000
+  },
+  "tie_word_embeddings": false,
+  "torch_dtype": "float32",
+  "transformers_version": "4.35.2",
+  "use_decoder_only_language_model": true,
+  "vision_config": {
+    "image_size": 448,
+    "model_type": "chexagent_vision_model",
+    "num_hidden_layers": 40
+  },
+  "auto_map": {
+    "AutoModelForCausalLM": "modeling_chexagent.CheXagentForConditionalGeneration",
+    "AutoConfig": "configuration_chexagent.CheXagentConfig"
+  }
+}

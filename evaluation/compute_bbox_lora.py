@@ -13,8 +13,8 @@ import torchvision
 import torch
 from torch import autocast
 from datasets import get_dataset
-from foreground_masks import GMMMaskSuggestor
-from preliminary_masks import preprocess_attention_maps
+from utils.foreground_masks import GMMMaskSuggestor
+from utils.preliminary_masks import preprocess_attention_maps
 from visualization.utils import word_to_slice
 from visualization.utils import MIMIC_STRING_TO_ATTENTION
 from sklearn.metrics import jaccard_score
@@ -31,7 +31,7 @@ from torch.utils.data import DataLoader
 from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
-from radbert_pipe import FrozenRadBERTPipe
+from radbert_pipe import FrozenCustomPipe
 from utils.attention_maps import curr_attn_maps, all_attn_maps
 
 
@@ -43,13 +43,11 @@ def compute_masks(rank, config, world_size, lora_weights):
         config["phrase_grounding"] = False
 
     dataset = get_dataset(config, "test")
-    pipeline = FrozenRadBERTPipe(save_attention=True, inpaint=True).pipe
-    pipeline.unet.config.attention_save_mode = "cross"
+    pipeline = FrozenCustomPipe(save_attention=True, inpaint=True).pipe
     pipeline.load_lora_weights(lora_weights)
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
     pipeline.text_encoder.requires_grad_(False)
-    logger.info(f"Enabling attention save mode")
     device = torch.device(rank) if torch.cuda.is_available() else torch.device("cpu")
     model = pipeline.to(device)
 
@@ -153,7 +151,7 @@ def compute_iou_score(config, lora_weights):
         if config.phrase_grounding_mode:
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
-    pipeline = FrozenRadBERTPipe(save_attention=True, inpaint=True).pipe
+    pipeline = FrozenCustomPipe(save_attention=True, inpaint=True).pipe
     pipeline.load_lora_weights(lora_weights)
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)

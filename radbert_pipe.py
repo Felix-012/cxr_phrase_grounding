@@ -1,3 +1,4 @@
+import os.path
 import torch
 from transformers import AutoModel, AutoTokenizer
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel, \
@@ -30,9 +31,9 @@ def _load_vae(component_name, path, torch_dtype, variant):
     return AutoencoderKL.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
 
-class FrozenRadBERTPipe:
+class FrozenCustomPipe:
     def __init__(self, use_freeze=True, path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components",variant=None,
-                 torch_dtype=torch.float16, device="cuda", save_attention=False, inpaint=False, accelerator=None):
+                 llm_name="radbert", torch_dtype=torch.float16, device="cuda", save_attention=False, inpaint=False, accelerator=None):
         self.device = device
         component_loader = {
             "text_encoder": _load_text_encoder,
@@ -48,12 +49,15 @@ class FrozenRadBERTPipe:
                 accelerator.print(f"Loading {component_name}...")
             else:
                 print(f"Loading {component_name}...")
-            component = component_loader.get(component_name)(component_name, path, torch_dtype, variant)
+            if component_name is "tokenizer" or "text_encoder":
+                component = component_loader.get(component_name)(component_name, os.path.join(path, llm_name),
+                                                                 torch_dtype, variant)
+            else:
+                component = component_loader.get(component_name)(component_name, path, torch_dtype, variant)
             component_mapper[component_name] = component
 
         if use_freeze:
             _freeze(component_mapper["text_encoder"])
-
 
         if accelerator:
             accelerator.print("Building custom pipeline...")

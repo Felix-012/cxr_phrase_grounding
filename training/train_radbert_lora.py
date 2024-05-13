@@ -22,7 +22,7 @@ from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
 from torch.utils.data import DataLoader, Subset
 from tqdm.auto import tqdm
-from radbert_pipe import FrozenRadBERTPipe
+from radbert_pipe import FrozenCustomPipe
 from datasets import get_dataset
 from datasets.utils import load_config
 from utils.utils import collate_batch
@@ -92,7 +92,7 @@ def main():
         set_seed(args.seed)
 
     # Load scheduler, tokenizer and models.
-    pipeline = FrozenRadBERTPipe(path=args.pretrained_model_name_or_path, accelerator=accelerator)
+    pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path, accelerator=accelerator)
     unet = pipeline.pipe.unet
     vae = pipeline.pipe.vae
     text_encoder = pipeline.pipe.text_encoder
@@ -494,7 +494,7 @@ def main():
                     f" {args.validation_prompt}."
                 )
                 # create pipeline
-                pipeline = FrozenRadBERTPipe(path=args.pretrained_model_name_or_path).pipe
+                pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path).pipe
                 pipeline = pipeline.to("cuda")
                 pipeline.load_lora_weights(os.path.join(args.output_dir, get_latest_directory(args)))
                 pipeline.set_progress_bar_config(disable=True)
