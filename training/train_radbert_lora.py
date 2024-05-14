@@ -188,8 +188,20 @@ def main():
     with accelerator.main_process_first():
 
         train_dataset = get_dataset(config, "train")
-        if config.num_chunks == 1:
+        if config.num_chunks > 1:
+            accelerator.print("using chunked data")
+            train_dataset.load_chunk(0)
+        else:
+            accelerator.print("using whole dataset")
             train_dataset.load_precomputed(pipeline.pipe.vae)
+            accelerator.print("Tokenizing training data...")
+            for data in train_dataset:
+                impression = data['impression'] if 'impression' in data else None
+                if impression:
+                    data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
+                                                                                  is_train=True)
+                else:
+                    raise KeyError("No impression saved")
 
 
 
@@ -201,6 +213,8 @@ def main():
             batch_size=args.train_batch_size,
             num_workers=config.dataloading.num_workers,
         )
+
+
 
 
 
@@ -275,18 +289,20 @@ def main():
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
         # Tokenizing data
         with accelerator.main_process_first():
-            accelerator.print("Tokenizing training data...")
-            for data in train_dataset:
-                impression = data['impression'] if 'impression' in data else None
-                if impression:
-                    data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
-                else:
-                    raise KeyError("No impression saved")
+            if config.num_chunks > 1:
+                accelerator.print("Tokenizing training data...")
+                for data in train_dataset:
+                    impression = data['impression'] if 'impression' in data else None
+                    if impression:
+                        data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
+                    else:
+                        raise KeyError("No impression saved")
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
