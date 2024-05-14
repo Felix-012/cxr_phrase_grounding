@@ -32,6 +32,7 @@ class MimicCXRDataset(FOBADataset):
         self.num_chunks = opt.num_chunks
         self.current_chunk_index = 0
         self.chunk_path = opt.chunk_path
+        self.tokenized = False
 
     @property
     def precomputed_path(self):
@@ -222,6 +223,7 @@ class MimicCXRDataset(FOBADataset):
         target_idx = idx % self.chunk_size
         if self.current_chunk_index != target_chunk:
             self.load_chunk(target_chunk)
+            self.tokenized = False
         ret = self.data[target_idx]
         # Apply your custom logic for the text_label_key
         if self.text_label_key in ret:

@@ -293,18 +293,21 @@ def main():
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
-        # Tokenizing data
-        with accelerator.main_process_first():
-            if config.num_chunks > 1:
-                accelerator.print("Tokenizing training data...")
-                for data in train_dataset:
-                    impression = data['impression'] if 'impression' in data else None
-                    if impression:
-                        data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
-                    else:
-                        raise KeyError("No impression saved")
+
 
         for step, batch in enumerate(train_dataloader):
+            # Tokenizing data
+            with accelerator.main_process_first():
+                if config.num_chunks > 1 and not train_dataset.tokenized:
+                    accelerator.print("Tokenizing training data...")
+                    for data in train_dataset:
+                        impression = data['impression'] if 'impression' in data else None
+                        if impression:
+                            data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
+                                                                  is_train=True)
+                        else:
+                            raise KeyError("No impression saved")
+                    train_dataset.tokenized = True
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(unet.device)
