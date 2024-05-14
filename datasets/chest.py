@@ -30,7 +30,7 @@ class MimicCXRDataset(FOBADataset):
         self.text_label_key = dataset_args.get("text_label_key", "impression")
         self.chunk_size = 0
         self.num_chunks = dataset_args.get("num_chunks")
-        self.current_chunk_index = 0
+        self.current_chunk_index = -1
         self.chunk_path = dataset_args.get("chunk_path")
         self.tokenized = False
 
