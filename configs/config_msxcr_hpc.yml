@@ -10,7 +10,7 @@ log_dir: $WORK/cxr_phrase_grounding/log
 validation_split: 0.1
 
 dataloading:
-  batch_size: 64
+  batch_size: 32
   num_workers: 0
 
 datasets:
