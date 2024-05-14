@@ -190,7 +190,7 @@ def main():
         train_dataset = get_dataset(config, "train")
         if config.num_chunks > 1:
             accelerator.print("using chunked data")
-            train_dataset.load_chunk(0)
+            train_dataset.load_chunk(1)
         else:
             accelerator.print("using whole dataset")
             train_dataset.load_precomputed(pipeline.pipe.vae)
