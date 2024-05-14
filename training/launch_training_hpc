@@ -17,6 +17,4 @@ accelerate launch $WORK/cxr_phrase_grounding/training/train_radbert_lora.py \
 --cache_dir=$WORK/cxr_phrase_grounding/.cache \
 --generation_validation_epochs=1000 \
 --train_batch_size=16 \
---resume_from_checkpoint=latest \
---num_chunks=4 \
---chunk_path=$WORK/data/mimic/training_data_chunked
+--resume_from_checkpoint=latest

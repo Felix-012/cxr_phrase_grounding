@@ -28,6 +28,8 @@ datasets:
     shuffle: true
     save_original_images: false
     dataset_csv: cxr-record-list-impressions-no_p19_pruned.csv
+    num_chunks: 4
+    chunk_path: $WORK/data/mimic/training_data_chunked
 
   test:
     dataset: chestxraymimicbbox
