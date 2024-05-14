@@ -13,6 +13,8 @@ unset SLURM_EXPORT_ENV
 
 cd $WORK/cxr_phrase_grounding
 
+export PYTHONPATH=$PWD
+
 
 # Set proxy to access internet from the node
 export http_proxy=http://proxy:80
