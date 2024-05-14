@@ -170,6 +170,22 @@ def get_parser_arguments_train_lora(parser):
             "Number of subprocesses to use for data loading for validation. 0 means that the data will be loaded in the main process."
         ),
     )
+    parser.add_argument(
+        "--chunk_path",
+        type=str,
+        default=None,
+        help=(
+            "Path to chunked train data if used."
+        ),
+    )
+    parser.add_argument(
+        "--num_chunks",
+        type=int,
+        default=1,
+        help=(
+            "Number of chunks of the training data"
+        ),
+    )
 
     parser.add_argument(
         "--validation_epochs",

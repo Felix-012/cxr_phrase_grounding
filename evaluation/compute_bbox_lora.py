@@ -156,7 +156,6 @@ def compute_iou_score(config, lora_weights):
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
     pipeline.text_encoder.requires_grad_(False)
-    logger.info(f"Enabling attention save mode")
     dataset.load_precomputed(pipeline)
     dataloader = DataLoader(dataset,
                             batch_size=config.sample.iou_batch_size,

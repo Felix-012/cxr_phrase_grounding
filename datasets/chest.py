@@ -28,6 +28,10 @@ class MimicCXRDataset(FOBADataset):
         self.precomputed_base_dir=dataset_args.get("precomputed_base_dir")
         self._save_original_images = dataset_args.get("save_original_images", False)
         self.text_label_key = dataset_args.get("text_label_key", "impression")
+        self.chunk_size = 0
+        self.num_chunks = opt.num_chunks
+        self.current_chunk_index = 0
+        self.chunk_path = opt.chunk_path
 
     @property
     def precomputed_path(self):
@@ -59,6 +63,17 @@ class MimicCXRDataset(FOBADataset):
         self.data = []
         for i in range(len(entries["rel_path"])):
             self.data.append({k: entries[k][i] for k in entries.keys()})
+
+    def load_chunk(self, chunk_index):
+        if chunk_index == self.current_chunk_index:
+            return  # No need to load if it's already the current chunk
+        filename = f"entries_{chunk_index}.pkl"
+        with open(os.path.join(self.chunk_path, filename), "rb") as f:
+            entries = pickle.load(f)
+        self.data = [{k: entries[k][i] for k in entries.keys()} for i in range(len(entries['rel_path']))]
+        self.current_chunk_index = chunk_index
+        if self.chunk_size is None:
+            self.chunk_size = len(self.data)
 
     def compute_latent(self, img, model):
         """
@@ -202,15 +217,24 @@ class MimicCXRDataset(FOBADataset):
         entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
 
-    def __getitem__(self, item):
-        ret = super().__getitem__(item)
-        if self.text_label_key == "finding_labels":
-            if isinstance(ret["finding_labels"], float):
+    def __getitem__(self, idx):
+        target_chunk = idx // self.chunk_size
+        target_idx = idx % self.chunk_size
+        if self.current_chunk_index != target_chunk:
+            self.load_chunk(target_chunk)
+        ret = self.data[target_idx]
+        # Apply your custom logic for the text_label_key
+        if self.text_label_key in ret:
+            if isinstance(ret[self.text_label_key], float):
                 ret["impression"] = ""
             else:
-                finding_labels = ret["finding_labels"].split("|")
+                finding_labels = ret[self.text_label_key].split("|")
                 ret["impression"] = " ".join(random.sample(finding_labels, len(finding_labels)))
         return ret
+
+    def __len__(self):
+        # Total dataset length is chunk size times number of chunks
+        return self.chunk_size * self.num_chunks if self.chunk_size else 0
 
 
 class MimicCXRDatasetMSBBOX(MimicCXRDataset):

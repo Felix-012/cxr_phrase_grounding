@@ -187,38 +187,9 @@ def main():
     config = load_config(args.config)
     with accelerator.main_process_first():
 
-        dataset = get_dataset(config, "train")
-
-        # Splitting dataset into train and validation subsets
-        train_idx, val_idx = train_test_split(
-            range(len(dataset)),
-            test_size=config.validation_split,
-            random_state=42
-        )
-
-        if hasattr(dataset, 'load_precomputed'):
-            dataset.load_precomputed(pipeline.pipe.vae)
-
-        train_dataset = Subset(dataset, train_idx)
-        val_dataset = Subset(dataset, val_idx)
-
-
-
-        # Tokenizing data
-        accelerator.print("Tokenizing training data...")
-        for data in train_dataset:
-            impression = data['impression'] if 'impression' in data else None
-            if impression:
-                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
-            else:
-                raise KeyError("No impression saved")
-
-        for data in val_dataset:
-            impression = data['impression'] if 'impression' in data else None
-            if impression:
-                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
-            else:
-                raise KeyError("No impression saved")
+        train_dataset = get_dataset(config, "train")
+        if config.num_chunks == 1:
+            train_dataset.load_precomputed(pipeline.pipe.vae)
 
 
 
@@ -230,15 +201,6 @@ def main():
             batch_size=args.train_batch_size,
             num_workers=config.dataloading.num_workers,
         )
-
-        val_dataloader = DataLoader(
-            val_dataset,
-            shuffle=True,
-            collate_fn=collate_batch,
-            batch_size=args.train_batch_size,
-            num_workers=config.dataloading.num_workers,
-        )
-
 
 
 
@@ -316,6 +278,16 @@ def main():
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
+        # Tokenizing data
+        with accelerator.main_process_first():
+            accelerator.print("Tokenizing training data...")
+            for data in train_dataset:
+                impression = data['impression'] if 'impression' in data else None
+                if impression:
+                    data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
+                else:
+                    raise KeyError("No impression saved")
+
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -440,53 +412,6 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-
-        if accelerator.is_main_process:
-            if progress_bar.n % args.validation_epochs == 0:
-                logger.info("Running validation...")
-
-                unet.eval()  # Set the model to evaluation mode
-                validation_loss = 0.0
-                num_batches = 0
-
-                with torch.no_grad():  # No gradients needed for validation
-                    for val_batch in val_dataloader:
-                        # Convert images to latent space
-                        latents = torch.cat([latent.latent_dist.sample() for latent in val_batch["img"]])
-                        latents = latents * vae.config.scaling_factor
-
-                        # No noise is added to the latents in validation
-                        bsz = latents.shape[0]
-                        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,),
-                                                  device="cuda")
-                        timesteps = timesteps.long()
-
-                        # Get the text embedding for conditioning
-                        encoder_hidden_states = text_encoder(val_batch["input_ids"], return_dict=False, attention_mask=val_batch["attention_mask"])[0]
-
-                        # Compute noisy latents by using true noise during validation for consistency
-                        noise = torch.randn_like(latents)
-                        noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-                        if noise_scheduler.config.prediction_type == "epsilon":
-                            target = noise
-                        elif noise_scheduler.config.prediction_type == "v_prediction":
-                            target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                        else:
-                            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
-                        # Predict the noise residual
-                        model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
-
-                        # Calculate the loss
-                        val_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                        validation_loss += val_loss.item()
-                        num_batches += 1
-
-                avg_validation_loss = validation_loss / num_batches
-                accelerator.log({"validation_loss": avg_validation_loss}, step=global_step)
-
-                logger.info(f"Validation completed: Avg Loss = {avg_validation_loss}")
         if accelerator.is_main_process:
             if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
                 logger.info(
