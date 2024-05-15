@@ -441,51 +441,51 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
-        if accelerator.is_main_process:
-            if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
-                logger.info(
-                    f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
-                # create pipeline
-                pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path).pipe
-                pipeline = pipeline.to("cuda")
-                pipeline.load_lora_weights(os.path.join(args.output_dir, get_latest_directory(args)))
-                pipeline.set_progress_bar_config(disable=True)
+            if accelerator.is_main_process:
+                if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
+                    logger.info(
+                        f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+                    # create pipeline
+                    pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path).pipe
+                    pipeline = pipeline.to("cuda")
+                    pipeline.load_lora_weights(os.path.join(args.output_dir, get_latest_directory(args)))
+                    pipeline.set_progress_bar_config(disable=True)
 
-                # run inference
-                generator = torch.Generator(device="cuda")
-                if args.seed is not None:
-                    generator = generator.manual_seed(args.seed)
-                images = []
-                if torch.backends.mps.is_available():
-                    autocast_ctx = nullcontext()
-                else:
-                    autocast_ctx = torch.autocast(accelerator.device.type)
+                    # run inference
+                    generator = torch.Generator(device="cuda")
+                    if args.seed is not None:
+                        generator = generator.manual_seed(args.seed)
+                    images = []
+                    if torch.backends.mps.is_available():
+                        autocast_ctx = nullcontext()
+                    else:
+                        autocast_ctx = torch.autocast(accelerator.device.type)
 
-                with autocast_ctx:
-                    for _ in range(args.num_validation_images):
-                        images.append(
-                            pipeline(args.validation_prompt, num_inference_steps=30,
-                                     generator=generator).images[0]
-                        )
+                    with autocast_ctx:
+                        for _ in range(args.num_validation_images):
+                            images.append(
+                                pipeline(args.validation_prompt, num_inference_steps=30,
+                                         generator=generator).images[0]
+                            )
 
-                for tracker in accelerator.trackers:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "validation": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "tensorboard":
+                            np_images = np.stack([np.asarray(img) for img in images])
+                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                        if tracker.name == "wandb":
+                            tracker.log(
+                                {
+                                    "validation": [
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
+                                    ]
+                                }
+                            )
 
-                del pipeline
-        torch.cuda.empty_cache()
+                    del pipeline
+            torch.cuda.empty_cache()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
