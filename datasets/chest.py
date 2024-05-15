@@ -28,7 +28,7 @@ class MimicCXRDataset(FOBADataset):
         self.precomputed_base_dir=dataset_args.get("precomputed_base_dir")
         self._save_original_images = dataset_args.get("save_original_images", False)
         self.text_label_key = dataset_args.get("text_label_key", "impression")
-        self.chunk_size = 0
+        self.chunk_size = None
         self.num_chunks = dataset_args.get("num_chunks")
         self.current_chunk_index = -1
         self.chunk_path = dataset_args.get("chunk_path")
@@ -73,8 +73,8 @@ class MimicCXRDataset(FOBADataset):
             entries = pickle.load(f)
         self.data = [{k: entries[k][i] for k in entries.keys()} for i in range(len(entries['rel_path']))]
         self.current_chunk_index = chunk_index
-        if self.chunk_size is None:
-            self.chunk_size = len(self.data)
+        self.chunk_size = len(self.data)
+        logger.info(f"loaded chunk with size: {self.chunk_size}")
 
     def compute_latent(self, img, model):
         """
@@ -219,8 +219,10 @@ class MimicCXRDataset(FOBADataset):
         return entry
 
     def __getitem__(self, idx):
-        target_chunk = idx // self.chunk_size
+        target_chunk = (idx // self.chunk_size) + 1
+        print(f"target chunk {target_chunk}")
         target_idx = idx % self.chunk_size
+        print(f"target index {target_idx}")
         if self.current_chunk_index != target_chunk:
             self.load_chunk(target_chunk)
             self.tokenized = False
