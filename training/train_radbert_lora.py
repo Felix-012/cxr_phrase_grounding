@@ -190,7 +190,6 @@ def main():
         train_dataset = get_dataset(config, "train")
         if config.num_chunks > 1:
             accelerator.print("using chunked data")
-            train_dataset.load_next_chunk()
         else:
             accelerator.print("using whole dataset")
             train_dataset.load_precomputed(pipeline.pipe.vae)
@@ -203,16 +202,13 @@ def main():
                 else:
                     raise KeyError("No impression saved")
 
-
-
-        # Create dataloaders for training and validation datasets
-        train_dataloader = DataLoader(
-            train_dataset,
-            shuffle=True,
-            collate_fn=collate_batch,
-            batch_size=args.train_batch_size,
-            num_workers=config.dataloading.num_workers,
-        )
+            train_dataloader = DataLoader(
+                train_dataset,
+                shuffle=True,
+                collate_fn=collate_batch,
+                batch_size=args.train_batch_size,
+                num_workers=config.dataloading.num_workers,
+            )
 
 
 
@@ -450,7 +446,7 @@ def main():
                     # create pipeline
                     pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path).pipe
                     pipeline = pipeline.to("cuda")
-                    pipeline.load_lora_weights(os.path.join(args.output_dir, get_latest_directory(args)))
+                    pipeline.load_lora_weights(os.path.join(os.path.expandvars(args.output_dir), get_latest_directory(args)))
                     pipeline.set_progress_bar_config(disable=True)
 
                     # run inference
