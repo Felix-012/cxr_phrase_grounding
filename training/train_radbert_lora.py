@@ -307,9 +307,11 @@ def main():
                         raise KeyError("No impression saved")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
+                print(f"img {batch['img']}")
                 # Convert images to latent space
                 latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(unet.device)
                 latents = latents * vae.config.scaling_factor
+                print(f"latents: {latents}")
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -328,8 +330,11 @@ def main():
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(dtype=weight_dtype)
 
+                print(f"noisy_latents {noisy_latents}")
+
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
+                print(f"encoder hidden states:  {encoder_hidden_states}")
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
