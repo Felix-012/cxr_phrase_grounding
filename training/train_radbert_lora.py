@@ -350,7 +350,9 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
+                accelerator.print("computing model pred")
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+                accelerator.print(f"model pred computed {model_pred}")
 
                 if args.snr_gamma is None:
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
@@ -371,9 +373,12 @@ def main():
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
+                accelerator.print(f"loss: {loss}")
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
+
+                accelerator.print(f"train loss: {train_loss}")
 
                 # Backpropagate
                 accelerator.backward(loss)
@@ -386,6 +391,7 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                accelerator.print("in update")
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
