@@ -44,6 +44,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    print(args.resume_from_checkpoint)
 
     os.environ['HF_HOME'] = args.cache_dir
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
