@@ -190,7 +190,7 @@ def main():
         train_dataset = get_dataset(config, "train")
         if config.num_chunks > 1:
             accelerator.print("using chunked data")
-            train_dataset.load_random_chunk()
+            train_dataset.load_next_chunk()
         else:
             accelerator.print("using whole dataset")
             train_dataset.load_precomputed(pipeline.pipe.vae)
@@ -297,25 +297,27 @@ def main():
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
-
-
+        with accelerator.main_process_first():
+            if config.num_chunks > 1:
+                train_dataset.load_next_chunk()
+                train_dataloader = DataLoader(
+                    train_dataset,
+                    shuffle=True,
+                    collate_fn=collate_batch,
+                    batch_size=args.train_batch_size,
+                    num_workers=config.dataloading.num_workers,
+                )
+                steps_in_chunk = 0
+                accelerator.print("Tokenizing training data...")
+                for data in train_dataset:
+                    impression = data['impression'] if 'impression' in data else None
+                    if impression:
+                        data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
+                                                                                      is_train=True)
+                    else:
+                        raise KeyError("No impression saved")
         for step, batch in enumerate(train_dataloader):
-            # Tokenizing data
-            with accelerator.main_process_first():
-                if config.num_chunks > 1 and config.numsteps_in_chunk >= steps_per_chunk:
-                    train_dataset.load_random_chunk()
-                    steps_in_chunk=0
-                steps_in_chunk += 1
-                if config.num_chunks > 1 and not train_dataset.tokenized:
-                    accelerator.print("Tokenizing training data...")
-                    for data in train_dataset:
-                        impression = data['impression'] if 'impression' in data else None
-                        if impression:
-                            data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
-                                                              is_train=True)
-                        else:
-                            raise KeyError("No impression saved")
-                    train_dataset.tokenized = True
+            steps_in_chunk += 1
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(unet.device)

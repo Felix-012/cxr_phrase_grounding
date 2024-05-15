@@ -32,7 +32,8 @@ class MimicCXRDataset(FOBADataset):
         self.num_chunks = dataset_args.get("num_chunks")
         self.current_chunk_index = -1
         self.chunk_path = dataset_args.get("chunk_path")
-        self.tokenized = False
+        self.chunk_load_counter = 0
+        self.chunk_indices = list(range(self.num_chunks))
 
     @property
     def precomputed_path(self):
@@ -74,7 +75,6 @@ class MimicCXRDataset(FOBADataset):
         self.data = [{k: entries[k][i] for k in entries.keys()} for i in range(len(entries['rel_path']))]
         self.current_chunk_index = chunk_index
         self.chunk_size = len(self.data)
-        self.tokenized = False
         logger.info(f"loaded chunk {chunk_index} with size: {self.chunk_size}")
 
     def compute_latent(self, img, model):
@@ -219,9 +219,13 @@ class MimicCXRDataset(FOBADataset):
         entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
 
-    def load_random_chunk(self):
-        random_index = random.randint(1, self.num_chunks)
-        self.load_chunk(random_index)
+    def load_next_chunk(self):
+        if self.chunk_load_counter >= len(self.chunk_indices):  # If all chunks have been loaded once
+            random.shuffle(self.chunk_indices)  # Reshuffle the list
+            self.chunk_load_counter = 0  # Reset the counter
+        next_chunk_index = self.chunk_indices[self.chunk_load_counter]
+        self.load_chunk(next_chunk_index + 1)
+        self.chunk_load_counter += 1
 
     def __getitem__(self, idx):
         ret = self.data[idx]
