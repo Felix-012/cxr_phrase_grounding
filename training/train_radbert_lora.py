@@ -287,8 +287,8 @@ def main():
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
-        with accelerator.main_process_first() and epoch != first_epoch:
-            if config.num_chunks > 1:
+        with accelerator.main_process_first():
+            if config.num_chunks > 1 and epoch != first_epoch:
                 train_dataset.load_next_chunk()
                 train_dataloader = DataLoader(
                     train_dataset,
