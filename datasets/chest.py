@@ -238,10 +238,6 @@ class MimicCXRDataset(FOBADataset):
                 ret["impression"] = " ".join(random.sample(finding_labels, len(finding_labels)))
         return ret
 
-    def __len__(self):
-        # Total dataset length is chunk size times number of chunks
-        return self.chunk_size * self.num_chunks if self.chunk_size else 0
-
 
 class MimicCXRDatasetMSBBOX(MimicCXRDataset):
     def __init__(self, dataset_args, opt):

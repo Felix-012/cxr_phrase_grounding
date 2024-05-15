@@ -252,7 +252,6 @@ def main():
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
-    steps_per_chunk = len(train_dataset) // total_batch_size
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
@@ -261,7 +260,6 @@ def main():
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
-    logger.info(f"  Steps per chunk = {steps_per_chunk}")
     global_step = 0
     first_epoch = 0
 
@@ -292,8 +290,6 @@ def main():
         disable=not accelerator.is_local_main_process,
     )
 
-    steps_in_chunk = 0
-
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
@@ -307,7 +303,6 @@ def main():
                     batch_size=args.train_batch_size,
                     num_workers=config.dataloading.num_workers,
                 )
-                steps_in_chunk = 0
                 accelerator.print("Tokenizing training data...")
                 for data in train_dataset:
                     impression = data['impression'] if 'impression' in data else None
@@ -317,7 +312,6 @@ def main():
                     else:
                         raise KeyError("No impression saved")
         for step, batch in enumerate(train_dataloader):
-            steps_in_chunk += 1
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(unet.device)
