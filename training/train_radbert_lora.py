@@ -44,7 +44,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    print(args.resume_from_checkpoint)
 
     os.environ['HF_HOME'] = args.cache_dir
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -438,6 +437,11 @@ def main():
 
             if accelerator.is_main_process:
                 if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
+                    try:
+                        get_latest_directory(args)
+                    except FileNotFoundError:
+                        logger.info(f"Skipping validation - checkpoint {args.resume_from_checkpoint} could not be found")
+                        continue
                     logger.info(
                         f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
                         f" {args.validation_prompt}."
