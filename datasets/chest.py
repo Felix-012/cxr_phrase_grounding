@@ -68,7 +68,7 @@ class MimicCXRDataset(FOBADataset):
     def load_chunk(self, chunk_index):
         if chunk_index == self.current_chunk_index:
             return  # No need to load if it's already the current chunk
-        filename = f"entries_{chunk_index}.pkl"
+        filename = f"entries_part{chunk_index}.pkl"
         with open(os.path.join(os.path.expandvars(self.chunk_path), filename), "rb") as f:
             entries = pickle.load(f)
         self.data = [{k: entries[k][i] for k in entries.keys()} for i in range(len(entries['rel_path']))]
