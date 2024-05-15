@@ -8,8 +8,6 @@ component_dir: $WORK/cxr_phrase_grounding/components
 mask_dir: $WORK/preliminary_masks
 log_dir: $WORK/cxr_phrase_grounding/log
 validation_split: 0.1
-num_chunks: 4
-chunk_path: $WORK/data/mimic/training_data_chunked
 
 dataloading:
   batch_size: 32
@@ -30,6 +28,8 @@ datasets:
     shuffle: true
     save_original_images: false
     dataset_csv: cxr-record-list-impressions-no_p19_pruned.csv
+    num_chunks: 4
+    chunk_path: $WORK/data/mimic/training_data_chunked
 
 
   test:
