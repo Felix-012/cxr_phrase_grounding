@@ -439,7 +439,7 @@ def main():
                 if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
                     try:
                         get_latest_directory(args)
-                    except FileNotFoundError:
+                    except TypeError:
                         logger.info(f"Skipping validation - checkpoint {args.resume_from_checkpoint} could not be found")
                         continue
                     logger.info(
