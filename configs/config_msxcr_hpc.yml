@@ -7,7 +7,7 @@ data_dir: $WORK/data/mimic
 component_dir: $WORK/cxr_phrase_grounding/components
 mask_dir: $WORK/preliminary_masks
 log_dir: $WORK/cxr_phrase_grounding/log
-validation_split: 0.1
+num_chunks: 4
 
 dataloading:
   batch_size: 32
