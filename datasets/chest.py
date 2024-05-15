@@ -74,7 +74,8 @@ class MimicCXRDataset(FOBADataset):
         self.data = [{k: entries[k][i] for k in entries.keys()} for i in range(len(entries['rel_path']))]
         self.current_chunk_index = chunk_index
         self.chunk_size = len(self.data)
-        logger.info(f"loaded chunk with size: {self.chunk_size}")
+        self.tokenized = False
+        logger.info(f"loaded chunk {chunk_index} with size: {self.chunk_size}")
 
     def compute_latent(self, img, model):
         """
@@ -218,15 +219,12 @@ class MimicCXRDataset(FOBADataset):
         entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
 
+    def load_random_chunk(self):
+        random_index = random.randint(1, self.num_chunks)
+        self.load_chunk(random_index)
+
     def __getitem__(self, idx):
-        target_chunk = (idx // self.chunk_size) + 1
-        print(f"target chunk {target_chunk}")
-        target_idx = idx % self.chunk_size
-        print(f"target index {target_idx}")
-        if self.current_chunk_index != target_chunk:
-            self.load_chunk(target_chunk)
-            self.tokenized = False
-        ret = self.data[target_idx]
+        ret = self.data[idx]
         # Apply your custom logic for the text_label_key
         if self.text_label_key in ret:
             if isinstance(ret[self.text_label_key], float):
