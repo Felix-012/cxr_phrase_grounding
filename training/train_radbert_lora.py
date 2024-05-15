@@ -186,37 +186,35 @@ def main():
 
     config = load_config(args.config)
     with accelerator.main_process_first():
-
         train_dataset = get_dataset(config, "train")
         if config.num_chunks > 1:
             accelerator.print("using chunked data")
+            train_dataset.load_next_chunk()
         else:
             accelerator.print("using whole dataset")
             train_dataset.load_precomputed(pipeline.pipe.vae)
-            accelerator.print("Tokenizing training data...")
-            for data in train_dataset:
-                impression = data['impression'] if 'impression' in data else None
-                if impression:
-                    data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
-                                                                                  is_train=True)
-                else:
-                    raise KeyError("No impression saved")
-
-            train_dataloader = DataLoader(
-                train_dataset,
-                shuffle=True,
-                collate_fn=collate_batch,
-                batch_size=args.train_batch_size,
-                num_workers=config.dataloading.num_workers,
-            )
 
 
-
+        train_dataloader = DataLoader(
+            train_dataset,
+            shuffle=True,
+            collate_fn=collate_batch,
+            batch_size=args.train_batch_size,
+            num_workers=config.dataloading.num_workers,
+        )
+        accelerator.print("Tokenizing training data...")
+        for data in train_dataset:
+            impression = data['impression'] if 'impression' in data else None
+            if impression:
+                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
+                                                                              is_train=True)
+            else:
+                raise KeyError("No impression saved")
 
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataset) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -235,7 +233,7 @@ def main():
 
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataset) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -250,7 +248,7 @@ def main():
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num examples = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -289,7 +287,7 @@ def main():
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
-        with accelerator.main_process_first():
+        with accelerator.main_process_first() and epoch != first_epoch:
             if config.num_chunks > 1:
                 train_dataset.load_next_chunk()
                 train_dataloader = DataLoader(
