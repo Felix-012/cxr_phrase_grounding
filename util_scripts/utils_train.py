@@ -42,7 +42,7 @@ def unwrap_model(model, accelerator):
     model = model._orig_mod if is_compiled_module(model) else model
     return model
 
-def get_parser_arguments_train_lora(parser):
+def get_parser_arguments_train(parser):
     parser.add_argument(
         "--pretrained_model_name_or_path",
         type=str,
@@ -293,5 +293,6 @@ def get_parser_arguments_train_lora(parser):
         default=4,
         help="The dimension of the LoRA update matrices.",
     )
+    parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
 
     return parser

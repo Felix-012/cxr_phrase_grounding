@@ -15,19 +15,19 @@ def _freeze(model):
     for param in model.parameters():
         param.requires_grad = False
 
-def _load_text_encoder(component_name, path, torch_dtype, variant):
+def _load_text_encoder(component_name, path, torch_dtype, variant=None):
     return AutoModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
 
-def _load_unet(component_name, path, torch_dtype, variant):
+def _load_unet(component_name, path, torch_dtype, variant=None):
     return UNet2DConditionModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
 
-def _load_tokenizer(component_name, path, torch_dtype, variant):
+def _load_tokenizer(component_name, path, torch_dtype, variant=None):
     return AutoTokenizer.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
-def _load_scheduler(component_name, path, torch_dtype, variant):
+def _load_scheduler(component_name, path, torch_dtype, variant=None):
     return DDPMScheduler.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
-def _load_vae(component_name, path, torch_dtype, variant):
+def _load_vae(component_name, path, torch_dtype, variant=None):
     return AutoencoderKL.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
 

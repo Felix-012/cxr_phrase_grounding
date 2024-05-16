@@ -29,7 +29,7 @@ def precompute_images(config_path, model):
 if __name__ == "__main__":
     # Example usage of the precompute_images function
 
-    CONFIG_PATH= '/vol/ideadata/ce90tate/cxr_phrase_grounding/config_msxcr.yml'
+    CONFIG_PATH= '/vol/ideadata/ce90tate/cxr_phrase_grounding/configs/config_msxcr.yml'
 
     vae = FrozenCustomPipe().pipe.vae
     vae.requires_grad_(False)

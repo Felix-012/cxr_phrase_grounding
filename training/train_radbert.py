@@ -4,6 +4,9 @@ import argparse
 import logging
 from datetime import timedelta
 
+import accelerate
+
+from radbert_pipe import _load_unet
 import math
 import os
 import shutil
@@ -17,24 +20,23 @@ import torch.utils.checkpoint
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+from diffusers import UNet2DConditionModel, EMAModel
 from packaging import version
-from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from radbert_pipe import FrozenCustomPipe
 from datasets import get_dataset
 from datasets.utils import load_config
-from utils.utils_generic import collate_batch
-from utils.utils_train import get_latest_directory, get_parser_arguments_train_lora, tokenize_captions, unwrap_model
-from sklearn.model_selection import train_test_split
+from util_scripts.utils_generic import collate_batch
+from util_scripts.utils_train import get_latest_directory, get_parser_arguments_train, tokenize_captions, unwrap_model
 
 logger = get_logger(__name__, log_level="INFO")
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser = get_parser_arguments_train_lora(parser)
+    parser = get_parser_arguments_train(parser)
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -51,7 +53,7 @@ def main():
     import diffusers
     from diffusers import StableDiffusionPipeline
     from diffusers.optimization import get_scheduler
-    from diffusers.training_utils import cast_training_params, compute_snr
+    from diffusers.training_utils import compute_snr
     from diffusers.utils import check_min_version, convert_state_dict_to_diffusers
     from diffusers.utils.import_utils import is_xformers_available
 
@@ -99,11 +101,6 @@ def main():
     tokenizer = pipeline.pipe.tokenizer
     noise_scheduler = pipeline.pipe.scheduler
 
-    # freeze parameters of models to save more memory
-    unet.requires_grad_(False)
-    vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
-
     # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -112,28 +109,19 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    # Freeze the unet parameters before adding adapters
-    for param in unet.parameters():
-        param.requires_grad_(False)
-
-    unet_lora_config = LoraConfig(
-        r=args.rank,
-        lora_alpha=args.rank,
-        init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
-    )
-
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     unet.to(dtype=weight_dtype)
     vae.to(dtype=weight_dtype)
     text_encoder.to(dtype=weight_dtype)
 
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+    unet.train()
 
-    # Add adapter and make sure the trainable params are in float32.
-    unet.add_adapter(unet_lora_config)
-    if args.mixed_precision == "fp16":
-        # only upcast trainable parameters (LoRA) into fp32
-        cast_training_params(unet, dtype=torch.float32)
+    # Create EMA for the unet.
+    if args.use_ema:
+        ema_unet = _load_unet(component_name="unet", path=args.pretrained_model_name_or_path, torch_dtype=weight_dtype)
+        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -148,19 +136,52 @@ def main():
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
+        # `accelerate` 0.16.0 will have better support for customized saving
+    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
+        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        def save_model_hook(models, weights, output_dir):
+            if accelerator.is_main_process:
+                if args.use_ema:
+                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
+
+                for i, model in enumerate(models):
+                    model.save_pretrained(os.path.join(output_dir, "unet"))
+
+                    # make sure to pop weight so that corresponding model is not saved again
+                    weights.pop()
+
+        def load_model_hook(models, input_dir):
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
+                ema_unet.load_state_dict(load_model.state_dict())
+                ema_unet.to(accelerator.device)
+                del load_model
+
+            for _ in range(len(models)):
+                # pop models so that they are not loaded again
+                model = models.pop()
+
+                # load diffusers style into model
+                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                model.register_to_config(**load_model.config)
+
+                model.load_state_dict(load_model.state_dict())
+                del load_model
+
+        accelerator.register_save_state_pre_hook(save_model_hook)
+        accelerator.register_load_state_pre_hook(load_model_hook)
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
 
-    # Enable TF32 for faster training on Ampere GPUs,
-    # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
+        # Enable TF32 for faster training on Ampere GPUs,
+        # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Initialize the optimizer
@@ -177,7 +198,7 @@ def main():
         optimizer_cls = torch.optim.AdamW
 
     optimizer = optimizer_cls(
-        lora_layers,
+        unet.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -186,43 +207,15 @@ def main():
 
     config = load_config(args.config)
     with accelerator.main_process_first():
-
-        dataset = get_dataset(config, "train")
-
-        # Splitting dataset into train and validation subsets
-        train_idx, val_idx = train_test_split(
-            range(len(dataset)),
-            test_size=config.validation_split,
-            random_state=42
-        )
-
-        if hasattr(dataset, 'load_precomputed'):
-            dataset.load_precomputed(pipeline.pipe.vae)
-
-        train_dataset = Subset(dataset, train_idx)
-        val_dataset = Subset(dataset, val_idx)
+        train_dataset = get_dataset(config, "train")
+        if config.num_chunks > 1:
+            accelerator.print("using chunked data")
+            train_dataset.load_next_chunk()
+        else:
+            accelerator.print("using whole dataset")
+            train_dataset.load_precomputed(pipeline.pipe.vae)
 
 
-
-        # Tokenizing data
-        accelerator.print("Tokenizing training data...")
-        for data in train_dataset:
-            impression = data['impression'] if 'impression' in data else None
-            if impression:
-                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
-            else:
-                raise KeyError("No impression saved")
-
-        for data in val_dataset:
-            impression = data['impression'] if 'impression' in data else None
-            if impression:
-                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer, is_train=True)
-            else:
-                raise KeyError("No impression saved")
-
-
-
-        # Create dataloaders for training and validation datasets
         train_dataloader = DataLoader(
             train_dataset,
             shuffle=True,
@@ -230,16 +223,14 @@ def main():
             batch_size=args.train_batch_size,
             num_workers=config.dataloading.num_workers,
         )
-
-        val_dataloader = DataLoader(
-            val_dataset,
-            shuffle=True,
-            collate_fn=collate_batch,
-            batch_size=args.train_batch_size,
-            num_workers=config.dataloading.num_workers,
-        )
-
-
+        accelerator.print("Tokenizing training data...")
+        for data in train_dataset:
+            impression = data['impression'] if 'impression' in data else None
+            if impression:
+                data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
+                                                                              is_train=True)
+            else:
+                raise KeyError("No impression saved")
 
 
     # Scheduler and math around the number of training steps.
@@ -257,9 +248,12 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler, noise_scheduler, vae, text_encoder = accelerator.prepare(
-        [unet, optimizer, train_dataloader, lr_scheduler, noise_scheduler, vae, text_encoder]
+    unet, optimizer, lr_scheduler, noise_scheduler, vae, text_encoder = accelerator.prepare(
+        [unet, optimizer, lr_scheduler, noise_scheduler, vae, text_encoder]
     )
+
+    if args.use_ema:
+        ema_unet.to(accelerator.device)
 
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -278,7 +272,7 @@ def main():
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num examples = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -313,9 +307,28 @@ def main():
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
+        with accelerator.main_process_first():
+            if config.num_chunks > 1 and epoch != first_epoch:
+                train_dataset.load_next_chunk()
+                train_dataloader = DataLoader(
+                    train_dataset,
+                    shuffle=True,
+                    collate_fn=collate_batch,
+                    batch_size=args.train_batch_size,
+                    num_workers=config.dataloading.num_workers,
+                )
+                accelerator.print("Tokenizing training data...")
+                for data in train_dataset:
+                    impression = data['impression'] if 'impression' in data else None
+                    if impression:
+                        data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
+                                                                                      is_train=True)
+                    else:
+                        raise KeyError("No impression saved")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -383,14 +396,15 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = lora_layers
-                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
@@ -421,16 +435,9 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
 
-                        unwrapped_unet = unwrap_model(unet, accelerator)
-                        unet_lora_state_dict = convert_state_dict_to_diffusers(
-                            get_peft_model_state_dict(unwrapped_unet)
-                        )
+                        unet = unwrap_model(unet, accelerator)
 
-                        StableDiffusionPipeline.save_lora_weights(
-                            save_directory=save_path,
-                            unet_lora_layers=unet_lora_state_dict,
-                            safe_serialization=True,
-                        )
+                        pipe.save_pretrained(args.output_dir)
 
                         logger.info(f"Saved state to {save_path}")
 
@@ -440,111 +447,82 @@ def main():
             if global_step >= args.max_train_steps:
                 break
 
+            if accelerator.is_main_process:
+                if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
+                    try:
+                        get_latest_directory(args)
+                    except TypeError:
+                        logger.info(f"Skipping validation - checkpoint {args.resume_from_checkpoint} could not be found")
+                        continue
+                    logger.info(
+                        f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+                    pipeline = StableDiffusionPipeline.from_pretrained(
+                        args.pretrained_model_name_or_path,
+                        vae=accelerator.unwrap_model(vae),
+                        text_encoder=accelerator.unwrap_model(text_encoder),
+                        tokenizer=tokenizer,
+                        unet=accelerator.unwrap_model(unet),
+                        safety_checker=None,
+                        feature_extractor=None,
+                        torch_dtype=weight_dtype,
+                    )
+                    pipeline = pipeline.to(accelerator.device)
+                    pipeline.set_progress_bar_config(disable=True)
 
-        if accelerator.is_main_process:
-            if progress_bar.n % args.validation_epochs == 0:
-                logger.info("Running validation...")
+                    if args.enable_xformers_memory_efficient_attention:
+                        pipeline.enable_xformers_memory_efficient_attention()
 
-                unet.eval()  # Set the model to evaluation mode
-                validation_loss = 0.0
-                num_batches = 0
+                    # run inference
+                    generator = torch.Generator(device="cuda")
+                    if args.seed is not None:
+                        generator = generator.manual_seed(args.seed)
+                    images = []
+                    if torch.backends.mps.is_available():
+                        autocast_ctx = nullcontext()
+                    else:
+                        autocast_ctx = torch.autocast(accelerator.device.type)
 
-                with torch.no_grad():  # No gradients needed for validation
-                    for val_batch in val_dataloader:
-                        # Convert images to latent space
-                        latents = torch.cat([latent.latent_dist.sample() for latent in val_batch["img"]])
-                        latents = latents * vae.config.scaling_factor
+                    with autocast_ctx:
+                        for _ in range(args.num_validation_images):
+                            images.append(
+                                pipeline(args.validation_prompt, num_inference_steps=30,
+                                         generator=generator).images[0]
+                            )
 
-                        # No noise is added to the latents in validation
-                        bsz = latents.shape[0]
-                        timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,),
-                                                  device="cuda")
-                        timesteps = timesteps.long()
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "tensorboard":
+                            np_images = np.stack([np.asarray(img) for img in images])
+                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                        if tracker.name == "wandb":
+                            tracker.log(
+                                {
+                                    "validation": [
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
+                                    ]
+                                }
+                            )
 
-                        # Get the text embedding for conditioning
-                        encoder_hidden_states = text_encoder(val_batch["input_ids"], return_dict=False, attention_mask=val_batch["attention_mask"])[0]
-
-                        # Compute noisy latents by using true noise during validation for consistency
-                        noise = torch.randn_like(latents)
-                        noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
-
-                        if noise_scheduler.config.prediction_type == "epsilon":
-                            target = noise
-                        elif noise_scheduler.config.prediction_type == "v_prediction":
-                            target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                        else:
-                            raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
-
-                        # Predict the noise residual
-                        model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
-
-                        # Calculate the loss
-                        val_loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                        validation_loss += val_loss.item()
-                        num_batches += 1
-
-                avg_validation_loss = validation_loss / num_batches
-                accelerator.log({"validation_loss": avg_validation_loss}, step=global_step)
-
-                logger.info(f"Validation completed: Avg Loss = {avg_validation_loss}")
-        if accelerator.is_main_process:
-            if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
-                logger.info(
-                    f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
-                # create pipeline
-                pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path).pipe
-                pipeline = pipeline.to("cuda")
-                pipeline.load_lora_weights(os.path.join(args.output_dir, get_latest_directory(args)))
-                pipeline.set_progress_bar_config(disable=True)
-
-                # run inference
-                generator = torch.Generator(device="cuda")
-                if args.seed is not None:
-                    generator = generator.manual_seed(args.seed)
-                images = []
-                if torch.backends.mps.is_available():
-                    autocast_ctx = nullcontext()
-                else:
-                    autocast_ctx = torch.autocast(accelerator.device.type)
-
-                with autocast_ctx:
-                    for _ in range(args.num_validation_images):
-                        images.append(
-                            pipeline(args.validation_prompt, num_inference_steps=30,
-                                     generator=generator).images[0]
-                        )
-
-                for tracker in accelerator.trackers:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "validation": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
-
-                del pipeline
-        torch.cuda.empty_cache()
+                    del pipeline
+            torch.cuda.empty_cache()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unet.to(torch.float32)
+        unet = unwrap_model(unet, accelerator)
+        if args.use_ema:
+            ema_unet.copy_to(unet.parameters())
 
-        unwrapped_unet = unwrap_model(unet, accelerator)
-        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
-        StableDiffusionPipeline.save_lora_weights(
-            save_directory=args.output_dir,
-            unet_lora_layers=unet_lora_state_dict,
-            safe_serialization=True,
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            text_encoder=text_encoder,
+            vae=vae,
+            unet=unet,
         )
+
+        pipeline.save_pretrained(args.output_dir)
 
         accelerator.end_training()
 

@@ -8,9 +8,6 @@ from datasets.dataset import FOBADataset
 from log import logger
 from util_scripts.utils_generic import DatasetSplit
 import torch
-import torch.distributed as dist
-from torch.utils.data import DataLoader, DistributedSampler
-from torch.nn.parallel import DistributedDataParallel as DDP
 import os, pickle
 from tqdm import tqdm
 
@@ -35,6 +32,7 @@ class MimicCXRDataset(FOBADataset):
         self.chunk_load_counter = 0
         if self.num_chunks:
             self.chunk_indices = list(range(self.num_chunks))
+        random.seed(4200)
 
     @property
     def precomputed_path(self):
@@ -117,8 +115,6 @@ class MimicCXRDataset(FOBADataset):
         if self._save_original_images:
             entries["img_raw"] = []
         j = 0
-
-
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
             print("start precomputing")
             try:

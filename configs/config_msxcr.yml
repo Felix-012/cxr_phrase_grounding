@@ -39,7 +39,7 @@ datasets:
     split: mscxr
     preload: true
     save_original_images: true
-    dataset_csv: mimic_p19_preprocessed.csv
+    dataset_csv: p19_5k_preprocessed_evenly_new_hpc.csv
 
 sample:
   ddim_steps: 75
