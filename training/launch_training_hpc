@@ -1,7 +1,7 @@
 #!/bin/bash
 accelerate launch $WORK/cxr_phrase_grounding/training/train_radbert_lora.py \
 --pretrained_model_name_or_path=$WORK/cxr_phrase_grounding/components \
---gradient_accumulation_steps=1 \
+--gradient_accumulation_steps=2 \
 --max_train_steps=30001 \
 --learning_rate=5e-05 \
 --max_grad_norm=1 \
@@ -16,5 +16,5 @@ accelerate launch $WORK/cxr_phrase_grounding/training/train_radbert_lora.py \
 --validation_prompt="An image of a chest xray" \
 --cache_dir=$WORK/cxr_phrase_grounding/.cache \
 --generation_validation_epochs=1000 \
---train_batch_size=32 \
+--train_batch_size=16 \
 --resume_from_checkpoint=latest
