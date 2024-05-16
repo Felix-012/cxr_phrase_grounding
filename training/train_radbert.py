@@ -25,7 +25,7 @@ from tqdm.auto import tqdm
 from radbert_pipe import FrozenCustomPipe
 from datasets import get_dataset
 from datasets.utils import load_config
-from utils.utils import collate_batch
+from utils.utils_generic import collate_batch
 from utils.utils_train import get_latest_directory, get_parser_arguments_train_lora, tokenize_captions, unwrap_model
 from sklearn.model_selection import train_test_split
 

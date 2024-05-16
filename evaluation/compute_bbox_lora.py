@@ -13,14 +13,14 @@ import torchvision
 import torch
 from torch import autocast
 from datasets import get_dataset
-from utils.foreground_masks import GMMMaskSuggestor
-from utils.preliminary_masks import preprocess_attention_maps
+from util_scripts.foreground_masks import GMMMaskSuggestor
+from util_scripts.preliminary_masks import preprocess_attention_maps
 from visualization.utils import word_to_slice
 from visualization.utils import MIMIC_STRING_TO_ATTENTION
 from sklearn.metrics import jaccard_score
 from log import logger
 from tqdm import tqdm
-from utils.utils import collate_batch
+from util_scripts.utils_generic import collate_batch
 from einops import rearrange, repeat
 from pytorch_lightning import seed_everything
 from mpl_toolkits.axes_grid1 import ImageGrid
@@ -32,7 +32,7 @@ from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
 from radbert_pipe import FrozenCustomPipe
-from utils.attention_maps import curr_attn_maps, all_attn_maps
+from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
 
 
 def compute_masks(rank, config, world_size, lora_weights):

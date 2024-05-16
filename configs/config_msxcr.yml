@@ -34,10 +34,12 @@ datasets:
 
   test:
     dataset: chestxraymimicbbox
-    base_dir: /vol/ideadata/ce90tate/data/mimic
+    base_dir: /vol/ideadata/ed52egek/data/mimic/jpg/physionet.org/files/mimic-cxr-jpg/2.0.0
+    precomputed_base_dir: /vol/ideadata/ce90tate/data/mimic
     split: mscxr
     preload: true
     save_original_images: true
+    dataset_csv: mimic_p19_preprocessed.csv
 
 sample:
   ddim_steps: 75

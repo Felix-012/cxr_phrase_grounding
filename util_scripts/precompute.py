@@ -1,16 +1,8 @@
-import torch
-import os
-import logging
-from torchvision.transforms import Compose, Resize, CenterCrop
-from tqdm import tqdm
-import pickle
-import numpy as np
-import pandas as pd
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.utils.data import DataLoader, DistributedSampler
 
-from datasets import MimicCXRDataset, get_dataset
+import logging
+
+
+from datasets import get_dataset
 from datasets.utils import load_config
 from radbert_pipe import FrozenCustomPipe
 
@@ -26,7 +18,7 @@ def precompute_images(config_path, model):
 
 
     config = load_config(config_path)
-    dataset = get_dataset(config, "train")
+    dataset = get_dataset(config, "test")
 
     # Run the precompute process using the provided model
     dataset.load_precomputed(model)

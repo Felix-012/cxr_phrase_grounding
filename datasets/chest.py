@@ -6,7 +6,7 @@ from datasets.utils import path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
 from datasets.dataset import FOBADataset
 from log import logger
-from utils.utils import DatasetSplit
+from util_scripts.utils_generic import DatasetSplit
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, DistributedSampler
@@ -33,7 +33,8 @@ class MimicCXRDataset(FOBADataset):
         self.current_chunk_index = -1
         self.chunk_path = dataset_args.get("chunk_path")
         self.chunk_load_counter = 0
-        self.chunk_indices = list(range(self.num_chunks))
+        if self.num_chunks:
+            self.chunk_indices = list(range(self.num_chunks))
 
     @property
     def precomputed_path(self):
