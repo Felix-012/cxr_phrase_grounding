@@ -1,4 +1,4 @@
-"""Fine-tuning script for Stable Diffusion for text2image with support for LoRA."""
+"""Fine-tuning script for Stable Diffusion for text2image"""
 
 import argparse
 import logging
@@ -101,8 +101,6 @@ def main():
     tokenizer = pipeline.pipe.tokenizer
     noise_scheduler = pipeline.pipe.scheduler
 
-    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
-    # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -508,7 +506,7 @@ def main():
                     del pipeline
             torch.cuda.empty_cache()
 
-    # Save the lora layers
+    # Save the layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unwrap_model(unet, accelerator)
