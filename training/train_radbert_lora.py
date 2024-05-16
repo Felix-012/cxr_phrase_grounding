@@ -307,11 +307,9 @@ def main():
                         raise KeyError("No impression saved")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
-                print(f"img {torch.isnan(batch['img']).any()}")
                 # Convert images to latent space
                 latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(unet.device)
                 latents = latents * vae.config.scaling_factor
-                print(f"latents: {torch.isnan(latents).any()}")
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
@@ -330,11 +328,8 @@ def main():
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(dtype=weight_dtype)
 
-                print(f"noisy_latents {torch.isnan(noisy_latents).any()}")
-
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
-                print(f"encoder hidden states:  {torch.isnan(encoder_hidden_states).any()}")
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -349,10 +344,7 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                accelerator.print("computing model pred")
-                print(torch.isnan(timesteps).any())
                 model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
-                accelerator.print(f"model pred computed {torch.isnan(model_pred).any()}")
 
                 if args.snr_gamma is None:
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
@@ -391,7 +383,6 @@ def main():
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                accelerator.print("in update")
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
