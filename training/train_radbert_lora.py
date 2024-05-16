@@ -364,12 +364,9 @@ def main():
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
-                accelerator.print(f"loss: {loss}")
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
-
-                accelerator.print(f"train loss: {train_loss}")
 
                 # Backpropagate
                 accelerator.backward(loss)
