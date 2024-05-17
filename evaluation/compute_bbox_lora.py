@@ -282,10 +282,8 @@ def compute_iou_score(config, lora_weights):
         json.dump(json_results, file, indent=4)
 
 def get_args():
-    parser = argparse.ArgumentParser(description="")
+    parser = argparse.ArgumentParser(description="Compute Localization Scores")
     parser.add_argument("--config", type=str, help="Path to the dataset config file")
-    parser.add_argument("--lora_weights", type=str, help="Path to the lora weights",
-                        default="/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert")
     parser.add_argument("--mask_dir", type=str, default=None,
                         help="dir to save masks in. Default will be inside log dir and should be used!")
     parser.add_argument("--filter_bad_impressions", action="store_true", default=False,
@@ -299,5 +297,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    compute_masks(0, config, world_size, args.lora_weights)
+    compute_masks(0, config, world_size, config.lora_weights)
     compute_iou_score(config, args.lora_weights)

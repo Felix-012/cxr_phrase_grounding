@@ -4,7 +4,7 @@ import torch
 from einops import rearrange
 import numpy as np
 from sklearn.mixture import GaussianMixture
-from utils.utils_generic import resize_long_edge
+from util_scripts.utils_generic import resize_long_edge
 import torchvision
 from scipy.ndimage import binary_fill_holes, binary_closing
 
