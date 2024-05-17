@@ -35,13 +35,14 @@ from radbert_pipe import FrozenCustomPipe
 from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
 
 
-def compute_masks(rank, config, world_size, lora_weights):
+def compute_masks(rank, config, world_size):
     logger.info(f"Current rank: {rank}")
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
     else:
         config["phrase_grounding"] = False
 
+    lora_weights = config.lora_weights
     dataset = get_dataset(config, "test")
     pipeline = FrozenCustomPipe(save_attention=True, inpaint=True).pipe
     pipeline.load_lora_weights(lora_weights)
@@ -139,12 +140,13 @@ def compute_masks(rank, config, world_size, lora_weights):
                     torch.save(preliminary_attention_mask.to("cpu"), path)
 
 
-def compute_iou_score(config, lora_weights):
+def compute_iou_score(config):
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
     else:
         config["phrase_grounding"] = False
 
+    lora_weights = config.lora_weights
     dataset = get_dataset(config, "test")
 
     if config.filter_bad_impressions:
@@ -175,7 +177,7 @@ def compute_iou_score(config, lora_weights):
 
     dataset.add_preliminary_masks(mask_dir, sanity_check=False)
     mask_suggestor = GMMMaskSuggestor(config)
-    log_some = 1
+    log_some = 20
     results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
 
     resize_to_imag_size = torchvision.transforms.Resize(512)
@@ -252,7 +254,7 @@ def compute_iou_score(config, lora_weights):
                                  nrows_ncols=(4, 1),
                                  axes_pad=0.1)
                 for j, ax, im in zip(np.arange(4), grid, [img, img, binary_mask_large, ground_truth_img]): # 2nd img is below prelim mask
-                    ax.imshow(rearrange(im, "c h w -> h w c"))
+                    ax.imshow(rearrange(im, "c   h w -> h w c"))
                     if j == 1:
                         ax.imshow(prelim_mask_large.mean(axis=0), cmap="jet", alpha=0.25)
                         ax.scatter(argmax_idx[1], argmax_idx[0], s=100, c='red', marker='o')
@@ -297,5 +299,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    compute_masks(0, config, world_size, config.lora_weights)
-    compute_iou_score(config, args.lora_weights)
+    compute_masks(1, config, world_size)
+    compute_iou_score(config)

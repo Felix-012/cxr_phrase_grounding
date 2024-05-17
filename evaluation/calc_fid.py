@@ -14,9 +14,10 @@ IMAGE_EXTENSIONS = {'bmp', 'jpg', 'jpeg', 'pgm', 'png', 'ppm',
                     'tif', 'tiff', 'webp'}
 
 
-def main(opt):
+def main(args):
     device = torch.device('cuda')
-    if opt.num_workers is None:
+    config = load_config(args.config)
+    if config.num_workers is None:
         try:
             num_cpus = len(os.sched_getaffinity(0))
         except AttributeError:
@@ -24,7 +25,7 @@ def main(opt):
 
         num_workers = min(num_cpus, 8) if num_cpus is not None else 0
     else:
-        num_workers = opt.num_workers
+        num_workers = config.num_workers
 
     results = {}
     dims = 0
@@ -39,20 +40,20 @@ def main(opt):
             model = InceptionV3([block_idx]).to(device)
 
 
-        fid_value = calculate_fid_given_paths([opt.path_src, opt.path_tgt],
-                                              opt.batch_size,
+        fid_value = calculate_fid_given_paths([args.path_src, args.path_tgt],
+                                              args.batch_size,
                                               device,
                                               fid_model,
                                               model=model,
                                               dims=dims,
                                               num_workers=num_workers)
-        logger.info(f"FID of the following paths: {opt.path_src} -- {opt.path_tgt}")
+        logger.info(f"FID of the following paths: {args.path_src} -- {args.path_tgt}")
         logger.info(f'{fid_model} FID: {fid_value} --> ${fid_value:.1f}$')
         results[fid_model] = fid_value
 
-    if hasattr(opt, "result_dir") and opt.result_dir is not None:
-        with open(os.path.join(opt.result_dir, "fid_results.json"), "w") as file:
-            results_file = {"dataset_src": opt.path_src, "dataset_tgt": opt.path_tgt}
+    if hasattr(args, "result_dir") and args.result_dir is not None:
+        with open(os.path.join(args.result_dir, "fid_results.json"), "w") as file:
+            results_file = {"dataset_src": args.path_src, "dataset_tgt": args.path_tgt}
             for fid_model, fid_value in results.items():
                 results_file[fid_model] = {"FID": fid_value,
                                           "as_string": f"{fid_value:.1f}"
@@ -75,5 +76,4 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
-    config = load_config(args.config)
-    main(config)
+    main(args)
