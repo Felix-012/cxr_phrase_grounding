@@ -30,4 +30,4 @@ module load cuda/11.4.2
 source activate cxr_phrase_grounding
 
 # Run training script (with data copied to node)
-srun training/launch_training_hpc
+srun training/launch_training_lora_hpc
