@@ -271,7 +271,7 @@ def get_parser_arguments_train(parser):
     parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
-        default=None,
+        default=100,
         help="Max number of checkpoints to store.",
     )
     parser.add_argument(

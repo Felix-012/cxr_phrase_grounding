@@ -435,7 +435,7 @@ def main():
 
                         unet = unwrap_model(unet, accelerator)
 
-                        pipe.save_pretrained(args.output_dir)
+                        pipeline.pipe.save_pretrained(args.output_dir)
 
                         logger.info(f"Saved state to {save_path}")
 
