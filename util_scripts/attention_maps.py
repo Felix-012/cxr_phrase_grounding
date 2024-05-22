@@ -448,7 +448,6 @@ def lora_attn_call2_0(self, attn: Attention, hidden_states, height, width, *args
 
     return attn.processor(attn, hidden_states, height, width, *args, **kwargs)
 
-
 def cross_attn_init():
     AttnProcessor.__call__ = attn_call
     AttnProcessor2_0.__call__ = attn_call # attn_call is faster

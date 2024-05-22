@@ -18,7 +18,6 @@ from util_scripts.preliminary_masks import preprocess_attention_maps
 from visualization.utils import word_to_slice
 from visualization.utils import MIMIC_STRING_TO_ATTENTION
 from sklearn.metrics import jaccard_score
-from log import logger
 from tqdm import tqdm
 from util_scripts.utils_generic import collate_batch
 from einops import rearrange, repeat
@@ -33,6 +32,7 @@ from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noi
 from torch.utils.data.distributed import DistributedSampler
 from radbert_pipe import FrozenCustomPipe
 from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
+import logging as logger
 
 
 def compute_masks(rank, config, world_size):
@@ -98,7 +98,7 @@ def compute_masks(rank, config, world_size):
                 latents = [sample.latent_dist.sample() * pipeline.vae.scaling_factor for sample in samples["img"]]
                 curr_attn_maps.clear()
                 all_attn_maps.clear()
-                pipeline(prompt=samples["impression"], mask_image=mask, image=latents)
+                pipeline(prompt=samples["impression"], mask_image=mask, image=latents, num_inference_steps=30, cross_attention_kwargs={"scale": 0.9})
                 attention_images = preprocess_attention_maps(all_attn_maps, on_cpu=True)
 
                 for j, attention in enumerate(list(attention_images)):
@@ -126,12 +126,33 @@ def compute_masks(rank, config, world_size):
                     locations = word_to_slice(txt_label.split(" "), query_words)
                     if len(locations) == 0:
                         # use all
-                        tok_attention = attention[-1*rev_diff_steps:,:,token_positions[0]:token_positions[-1]]
+                        tok_attention = attention[:,:,token_positions[0]:token_positions[-1]]
                         tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
+                        # plt.imsave(f"attn_map_all_{j}.jpg", tok_attention.mean(dim=(0, 1, 2)))
+                        # plt.imsave(f"attn_map_all_up_{j}.jpg",
+                        #            attention[:8, :, token_positions[0]:token_positions[-1]].mean(
+                        #                dim=(0, 1, 2)))
+                        # plt.imsave(f"attn_map_all_mid_{j}.jpg",
+                        #            attention[8:9, :, token_positions[0]:token_positions[-1]].mean(
+                        #                dim=(0, 1, 2)))
+                        # plt.imsave(f"attn_map_all_down_{j}.jpg",
+                        #            attention[9:, :, token_positions[0]:token_positions[-1]].mean(
+                        #                dim=(0, 1, 2)))
+                        vis(tok_attention.mean(dim=(0,1,2)))
                     else:
+                        i = 0
                         for location in locations:
-                            tok_attention = attention[-1*rev_diff_steps:,:,token_positions[location]:token_positions[location+1]]
+                            tok_attention = attention[:,:,token_positions[location]:token_positions[location+1]]
                             tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
+                            # plt.imsave(f"attn_map_{query_words[i]}.jpg", tok_attention.mean(dim=(0,1,2)))
+                            # plt.imsave(f"attn_map_up_{query_words[i]}.jpg", attention[:8,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))
+                            # plt.imsave(f"attn_map_mid_{query_words[i]}.jpg", attention[8:9,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))
+                            # plt.imsave(f"attn_map_down_{query_words[i]}.jpg", attention[9:,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))
+                            # plt.show()
+                            vis(attention[7:8,:,token_positions[location]:token_positions[location+1]].mean(dim=(0,1,2)))
+                            vis(samples["bbox_img"][j])
+                            vis(tok_attention.mean(dim=(0,1,2)))
+                            i += 1
 
                     preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
                     path = samples_to_path(mask_dir, samples, j)
@@ -177,7 +198,7 @@ def compute_iou_score(config):
 
     dataset.add_preliminary_masks(mask_dir, sanity_check=False)
     mask_suggestor = GMMMaskSuggestor(config)
-    log_some = 20
+    log_some = 50
     results = {"rel_path":[], "finding_labels":[], "iou":[], "miou":[], "bboxiou":[], "bboxmiou":[], "distance":[], "top1":[], "aucroc": [], "cnr":[]}
 
     resize_to_imag_size = torchvision.transforms.Resize(512)
@@ -293,6 +314,12 @@ def get_args():
     parser.add_argument("--phrase_grounding_mode", action="store_true", default=False,
                         help="If set, then we use shortened impressions from mscxr")
     return parser.parse_args()
+
+
+
+def vis(tensor):
+    plt.imshow(tensor)
+    plt.show()
 
 
 if __name__ == '__main__':

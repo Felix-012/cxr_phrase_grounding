@@ -1,6 +1,10 @@
 from enum import Enum
+
+import numpy as np
 import torch
 import torchvision
+from einops import rearrange
+
 
 class DatasetSplit(Enum):
     train="train"
@@ -47,4 +51,12 @@ def collate_batch(batch):
             if all([value[0].size() == value[i].size() for i in range(len(value))]):
                 batched_data[key] = torch.concat(batched_data[key])
     return batched_data
+
+
+def img_to_viz(img):
+    img = rearrange(img, "1 c h w -> h w c")
+    if isinstance(img, torch.Tensor):
+        img = img.cpu().detach().numpy()
+    img = np.array(((img + 1) * 127.5), np.uint8)
+    return img
 

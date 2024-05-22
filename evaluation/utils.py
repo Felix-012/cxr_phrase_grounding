@@ -1,3 +1,5 @@
+import argparse
+
 from sklearn.metrics import jaccard_score
 import numpy as np
 import torch
@@ -188,3 +190,15 @@ def samples_to_path_multiquery(mask_dir, samples, j, query=""):
     path = os.path.join(mask_dir, sample_path + captions + query) + ".pt"
     #logger.info(f"StoPath: {path}")
     return path
+
+
+def get_compute_mssim():
+    parser = argparse.ArgumentParser(description="Compute MS-SSIM of dataset")
+    parser.add_argument("--n_sample_sets", type=int, default=100)
+    parser.add_argument("--trial_size", type=int, default=4)
+    parser.add_argument("--use_mscxrlabels", action="store_true", default=False, help="If set, then we use shortned impressions from mscxr")
+    parser.add_argument("--img_dir", type=str, default=None,
+                        help="dir to save images in. Default will be inside log dir and should be used!")
+    parser.add_argument("--config", type=str, default="/vol/ideadata/ce90tate/cxr_phrase_grounding/configs/config_msxcr.yml",
+                        help="path to config file")
+    return parser.parse_args()
