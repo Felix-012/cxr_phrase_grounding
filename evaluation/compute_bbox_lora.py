@@ -32,7 +32,7 @@ from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noi
 from torch.utils.data.distributed import DistributedSampler
 from radbert_pipe import FrozenCustomPipe
 from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
-import logging as logger
+from log import logger
 
 
 def compute_masks(rank, config, world_size):
