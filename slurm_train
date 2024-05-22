@@ -1,0 +1,33 @@
+#!/bin/bash -l
+#SBATCH --job-name=train_lora
+#SBATCH --ntasks=1
+#SBATCH --gres=gpu:a100:8
+#SBATCH --partition=a100
+#SBATCH --output=R-%x.%j.out
+#SBATCH --error=R-%x.%j.err
+#SBATCH --mail-type=end,fail
+#SBATCH --time=24:00:00
+#SBATCH --export=NONE
+
+unset SLURM_EXPORT_ENV
+
+cd $WORK/cxr_phrase_grounding
+
+export PYTHONPATH=$PWD
+
+
+# Set proxy to access internet from the node
+export http_proxy=http://proxy:80
+export https_proxy=http://proxy:80
+export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+
+module purge
+module load python/3.9-anaconda
+module load cudnn/8.2.4.15-11.4
+module load cuda/11.4.2
+
+# Conda
+source activate cxr_phrase_grounding
+
+# Run training script (with data copied to node)
+srun training/launch_training_hpc
