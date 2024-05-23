@@ -1,12 +1,9 @@
-"""Fine-tuning script for Stable Diffusion for text2image"""
+"""Fine-tuning script for Stable Diffusion for text2image with support for LoRA."""
 
 import argparse
 import logging
 from datetime import timedelta
 
-import accelerate
-
-from radbert_pipe import _load_unet
 import math
 import os
 import shutil
@@ -20,11 +17,14 @@ import torch.utils.checkpoint
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from diffusers import UNet2DConditionModel, EMAModel
+from diffusers import DDPMScheduler, AutoencoderKL, UNet2DConditionModel, DiffusionPipeline
 from packaging import version
+from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
+from transformers import CLIPTokenizer, CLIPTextModel
+
 from radbert_pipe import FrozenCustomPipe
 from datasets import get_dataset
 from datasets.utils import load_config
@@ -53,7 +53,7 @@ def main():
     import diffusers
     from diffusers import StableDiffusionPipeline
     from diffusers.optimization import get_scheduler
-    from diffusers.training_utils import compute_snr
+    from diffusers.training_utils import cast_training_params, compute_snr
     from diffusers.utils import check_min_version, convert_state_dict_to_diffusers
     from diffusers.utils.import_utils import is_xformers_available
 
@@ -94,32 +94,59 @@ def main():
         set_seed(args.seed)
 
     # Load scheduler, tokenizer and models.
-    pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path, accelerator=accelerator)
-    unet = pipeline.pipe.unet
-    vae = pipeline.pipe.vae
-    text_encoder = pipeline.pipe.text_encoder
-    tokenizer = pipeline.pipe.tokenizer
-    noise_scheduler = pipeline.pipe.scheduler
+    if args.use_custom:
+        pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path, accelerator=accelerator)
+        unet = pipeline.pipe.unet
+        vae = pipeline.pipe.vae
+        text_encoder = pipeline.pipe.text_encoder
+        tokenizer = pipeline.pipe.tokenizer
+        noise_scheduler = pipeline.pipe.scheduler
+    else:
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+        tokenizer = CLIPTokenizer.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="tokenizer")
+        text_encoder = CLIPTextModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="text_encoder")
+        vae = AutoencoderKL.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="vae")
+        unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet")
 
+    # freeze parameters of models to save more memory
+    unet.requires_grad_(False)
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
+    # Freeze the unet parameters before adding adapters
+    for param in unet.parameters():
+        param.requires_grad_(False)
+
+    unet_lora_config = LoraConfig(
+        r=args.rank,
+        lora_alpha=args.rank,
+        init_lora_weights="gaussian",
+        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+    )
+
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     unet.to(dtype=weight_dtype)
     vae.to(dtype=weight_dtype)
     text_encoder.to(dtype=weight_dtype)
 
-    vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
-    unet.train()
 
-    # Create EMA for the unet.
-    if args.use_ema:
-        ema_unet = _load_unet(component_name="unet", path=args.pretrained_model_name_or_path, torch_dtype=weight_dtype)
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+    # Add adapter and make sure the trainable params are in float32.
+    unet.add_adapter(unet_lora_config)
+    if args.mixed_precision == "fp16":
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(unet, dtype=torch.float32)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -134,52 +161,19 @@ def main():
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-        # `accelerate` 0.16.0 will have better support for customized saving
-    if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
-        def save_model_hook(models, weights, output_dir):
-            if accelerator.is_main_process:
-                if args.use_ema:
-                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
-
-                for i, model in enumerate(models):
-                    model.save_pretrained(os.path.join(output_dir, "unet"))
-
-                    # make sure to pop weight so that corresponding model is not saved again
-                    weights.pop()
-
-        def load_model_hook(models, input_dir):
-            if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
-                ema_unet.load_state_dict(load_model.state_dict())
-                ema_unet.to(accelerator.device)
-                del load_model
-
-            for _ in range(len(models)):
-                # pop models so that they are not loaded again
-                model = models.pop()
-
-                # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
-                model.register_to_config(**load_model.config)
-
-                model.load_state_dict(load_model.state_dict())
-                del load_model
-
-        accelerator.register_save_state_pre_hook(save_model_hook)
-        accelerator.register_load_state_pre_hook(load_model_hook)
+    lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
 
-        # Enable TF32 for faster training on Ampere GPUs,
-        # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
+    # Enable TF32 for faster training on Ampere GPUs,
+    # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.scale_lr:
         args.learning_rate = (
-                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
 
     # Initialize the optimizer
@@ -196,7 +190,7 @@ def main():
         optimizer_cls = torch.optim.AdamW
 
     optimizer = optimizer_cls(
-        unet.parameters(),
+        lora_layers,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -211,7 +205,7 @@ def main():
             train_dataset.load_next_chunk()
         else:
             accelerator.print("using whole dataset")
-            train_dataset.load_precomputed(pipeline.pipe.vae)
+            train_dataset.load_precomputed(vae)
 
 
         train_dataloader = DataLoader(
@@ -249,9 +243,6 @@ def main():
     unet, optimizer, lr_scheduler, noise_scheduler, vae, text_encoder = accelerator.prepare(
         [unet, optimizer, lr_scheduler, noise_scheduler, vae, text_encoder]
     )
-
-    if args.use_ema:
-        ema_unet.to(accelerator.device)
 
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -394,15 +385,14 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    params_to_clip = lora_layers
+                    accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
-                if args.use_ema:
-                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
@@ -433,6 +423,17 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
 
+                        unwrapped_unet = unwrap_model(unet, accelerator)
+                        unet_lora_state_dict = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(unwrapped_unet)
+                        )
+
+                        StableDiffusionPipeline.save_lora_weights(
+                            save_directory=save_path,
+                            unet_lora_layers=unet_lora_state_dict,
+                            safe_serialization=True,
+                        )
+
                         logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -452,21 +453,21 @@ def main():
                         f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
                         f" {args.validation_prompt}."
                     )
-                    pipeline = StableDiffusionPipeline.from_pretrained(
-                        args.pretrained_model_name_or_path,
-                        vae=accelerator.unwrap_model(vae),
-                        text_encoder=accelerator.unwrap_model(text_encoder),
-                        tokenizer=tokenizer,
-                        unet=accelerator.unwrap_model(unet),
-                        safety_checker=None,
-                        feature_extractor=None,
-                        torch_dtype=weight_dtype,
-                    )
-                    pipeline = pipeline.to(accelerator.device)
-                    pipeline.set_progress_bar_config(disable=True)
+                    # create pipeline
+                    if args.use_custom:
+                        pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path).pipe
+                        pipeline.load_lora_weights(os.path.join(os.path.expandvars(args.output_dir), get_latest_directory(args)))
+                    else:
+                        pipeline = DiffusionPipeline.from_pretrained(
+                            args.pretrained_model_name_or_path,
+                            unet=unwrap_model(unet, accelerator),
+                            revision=args.revision,
+                            variant=args.variant,
+                            torch_dtype=weight_dtype,
+                        )
 
-                    if args.enable_xformers_memory_efficient_attention:
-                        pipeline.enable_xformers_memory_efficient_attention()
+                    pipeline = pipeline.to("cuda")
+                    pipeline.set_progress_bar_config(disable=True)
 
                     # run inference
                     generator = torch.Generator(device="cuda")
@@ -502,21 +503,18 @@ def main():
                     del pipeline
             torch.cuda.empty_cache()
 
-    # Save the layers
+    # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unwrap_model(unet, accelerator)
-        if args.use_ema:
-            ema_unet.copy_to(unet.parameters())
+        unet = unet.to(torch.float32)
 
-        pipeline = StableDiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path,
-            text_encoder=text_encoder,
-            vae=vae,
-            unet=unet,
+        unwrapped_unet = unwrap_model(unet, accelerator)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
+        StableDiffusionPipeline.save_lora_weights(
+            save_directory=args.output_dir,
+            unet_lora_layers=unet_lora_state_dict,
+            safe_serialization=True,
         )
-
-        pipeline.save_pretrained(args.output_dir)
 
         accelerator.end_training()
 
