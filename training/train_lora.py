@@ -137,9 +137,9 @@ def main():
     )
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
-    unet.to(dtype=weight_dtype)
-    vae.to(dtype=weight_dtype)
-    text_encoder.to(dtype=weight_dtype)
+    unet.to(device="cuda", dtype=weight_dtype)
+    vae.to(device="cuda", dtype=weight_dtype)
+    text_encoder.to(device="cuda", dtype=weight_dtype)
 
 
     # Add adapter and make sure the trainable params are in float32.
