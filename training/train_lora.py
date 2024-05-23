@@ -25,7 +25,7 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from transformers import CLIPTokenizer, CLIPTextModel
 
-from radbert_pipe import FrozenCustomPipe
+from custom_pipe import FrozenCustomPipe
 from datasets import get_dataset
 from datasets.utils import load_config
 from util_scripts.utils_generic import collate_batch

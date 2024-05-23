@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader
 from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
-from radbert_pipe import FrozenCustomPipe
+from custom_pipe import FrozenCustomPipe
 from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
 from log import logger
 

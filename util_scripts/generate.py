@@ -2,7 +2,7 @@ import pandas as pd
 from diffusers import StableDiffusionPipeline
 from PIL import Image
 import torch
-from radbert_pipe import FrozenCustomPipe
+from custom_pipe import FrozenCustomPipe
 import os
 import matplotlib.pyplot as plt
 

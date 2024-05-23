@@ -18,4 +18,4 @@ accelerate launch $WORK/cxr_phrase_grounding/training/train_radbert_lora.py \
 --train_batch_size=16 \
 --resume_from_checkpoint=latest \
 --lr_warmup_steps=0 \
---use_custom=true
+--use_custom

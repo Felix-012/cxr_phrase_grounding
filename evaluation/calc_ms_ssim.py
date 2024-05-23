@@ -17,7 +17,7 @@ import numpy as np
 from einops import rearrange
 from evaluation.mssim import calc_ms_ssim_for_path_ordered, get_mscxr_synth_dataset
 from datasets.utils import load_config
-from radbert_pipe import FrozenCustomPipe
+from custom_pipe import FrozenCustomPipe
 
 
 def main(args):

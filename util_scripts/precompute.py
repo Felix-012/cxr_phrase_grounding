@@ -4,7 +4,7 @@ import logging
 
 from datasets import get_dataset
 from datasets.utils import load_config
-from radbert_pipe import FrozenCustomPipe
+from custom_pipe import FrozenCustomPipe
 
 # Assuming necessary imports and class definitions like `MimicCXRDataset` are available here.
 

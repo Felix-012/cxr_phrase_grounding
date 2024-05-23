@@ -17,5 +17,4 @@ accelerate launch $WORK/cxr_phrase_grounding/training/train_lora.py \
 --generation_validation_epochs=1000 \
 --train_batch_size=16 \
 --resume_from_checkpoint=latest \
---lr_warmup_steps=0 \
---use_custom=false
+--lr_warmup_steps=0
