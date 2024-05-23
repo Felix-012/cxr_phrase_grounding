@@ -294,5 +294,6 @@ def get_parser_arguments_train(parser):
         help="The dimension of the LoRA update matrices.",
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
+    parser.add_argument("--use_custom", action="store_true", help="Whether to use a custom model.")
 
     return parser
