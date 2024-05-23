@@ -1,5 +1,5 @@
 #!/bin/bash -l
-#SBATCH --job-name=train_lora
+#SBATCH --job-name=train_custom
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:a100:8
 #SBATCH --partition=a100

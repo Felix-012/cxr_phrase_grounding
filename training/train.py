@@ -467,12 +467,8 @@ def main():
                         f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
                         f" {args.validation_prompt}."
                     )
-                    if args.use_custom:
-                        pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path).pipe
-                        pipeline.load_lora_weights(
-                            os.path.join(os.path.expandvars(args.output_dir), get_latest_directory(args)))
-                    else:
-                        pipeline = StableDiffusionPipeline.from_pretrained(
+
+                    pipeline = StableDiffusionPipeline.from_pretrained(
                             args.pretrained_model_name_or_path,
                             vae=accelerator.unwrap_model(vae),
                             text_encoder=accelerator.unwrap_model(text_encoder),
@@ -481,7 +477,7 @@ def main():
                             safety_checker=None,
                             feature_extractor=None,
                             torch_dtype=weight_dtype,
-                        )
+                    )
 
                     pipeline = pipeline.to(accelerator.device)
                     pipeline.set_progress_bar_config(disable=True)
