@@ -1,12 +1,12 @@
 #!/bin/bash
-accelerate launch $WORK/cxr_phrase_grounding/training/train_radbert_lora.py \
+accelerate launch $WORK/cxr_phrase_grounding/training/train.py \
 --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
 --gradient_accumulation_steps=2 \
 --max_train_steps=30001 \
 --learning_rate=5e-05 \
 --max_grad_norm=1 \
 --lr_scheduler="cosine" \
---output_dir=$WORK/cxr_phrase_grounding/finetune/normal/radbert \
+--output_dir=$WORK/cxr_phrase_grounding/finetune/normal/clip \
 --report_to=wandb \
 --checkpointing_steps=1000 \
 --validation_epochs=100 \
