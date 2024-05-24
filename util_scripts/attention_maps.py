@@ -82,6 +82,8 @@ def Transformer2DModelForward(
     Returns:
         If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
         `tuple` where the first element is the sample tensor.
+        :param self:
+        :param added_cond_kwargs:
     """
     if cross_attention_kwargs is not None:
         if cross_attention_kwargs.get("scale", None) is not None:

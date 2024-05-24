@@ -82,7 +82,7 @@ class ImagePathDataset(torch.utils.data.Dataset):
             img = img/127.5 - 1.
 
         if self.channels == 1:
-            img = img.mean(dim=0, keepdims=True)
+            img = img.mean(dim=0)
         return img
 
 

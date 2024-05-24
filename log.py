@@ -1,10 +1,5 @@
 import logging
-from logging.handlers import RotatingFileHandler
 import sys
-import os
-import yaml
-import pprint
-from datetime import datetime
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
