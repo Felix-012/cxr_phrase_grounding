@@ -1,3 +1,5 @@
+"""adapted from https://github.com/MischaD/chest-distillation"""
+
 from einops import rearrange, repeat
 import torch
 from functools import partial

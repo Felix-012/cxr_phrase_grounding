@@ -1,4 +1,4 @@
-"""Fine-tuning script for Stable Diffusion for text2image"""
+"""adapted from https://github.com/huggingface/diffusers/tree/main/examples/text_to_image"""
 
 import argparse
 import logging

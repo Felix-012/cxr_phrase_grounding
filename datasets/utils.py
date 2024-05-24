@@ -1,3 +1,5 @@
+"""addapted from https://github.com/MischaD/chest-distillation"""
+
 import torch
 import scipy.ndimage as ndimage
 import cv2
@@ -5,8 +7,6 @@ from einops import rearrange
 import yaml
 from ml_collections import ConfigDict
 import os.path
-
-
 
 def path_to_tensor(path, normalize=True):
     if not os.path.isfile(path): raise FileExistsError

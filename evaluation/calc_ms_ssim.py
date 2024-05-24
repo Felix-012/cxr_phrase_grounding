@@ -1,3 +1,5 @@
+"""addapted from https://github.com/MischaD/chest-distillation"""
+
 import datetime
 import json
 import logging
@@ -18,8 +20,6 @@ from evaluation.mssim import calc_ms_ssim_for_path_ordered, get_mscxr_synth_data
 from evaluation.utils import get_compute_mssim
 from log import formatter as log_formatter
 from log import logger
-
-
 def main(args):
     #mean, sd = calc_ms_ssim_for_path(opt.path, n=opt.n_samples, trials=opt.trials)
     if not hasattr(args, "img_dir") or args.img_dir is None:

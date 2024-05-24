@@ -1,3 +1,5 @@
+"""adapted from https://github.com/MischaD/chest-distillation"""
+
 import os.path
 
 import torch

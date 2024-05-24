@@ -1,3 +1,5 @@
+"""addapted from https://github.com/MischaD/chest-distillation"""
+
 import argparse
 import json
 from evaluation.inception import InceptionV3

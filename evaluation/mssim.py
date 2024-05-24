@@ -1,3 +1,5 @@
+"""from https://github.com/MischaD/chest-distillation"""
+
 import os
 import random
 
@@ -9,8 +11,6 @@ from datasets.utils import path_to_tensor
 import pandas as pd
 import pathlib
 from evaluation.xrv_fid import IMAGE_EXTENSIONS
-
-
 
 def calc_ms_ssim(imgs):
     msssim = MultiScaleStructuralSimilarityIndexMeasure(gaussian_kernel=True,

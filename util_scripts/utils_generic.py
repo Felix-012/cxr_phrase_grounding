@@ -1,3 +1,5 @@
+"""addapted from https://github.com/MischaD/chest-distillation"""
+
 from enum import Enum
 
 import numpy as np
