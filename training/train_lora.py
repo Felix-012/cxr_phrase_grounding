@@ -95,7 +95,7 @@ def main():
 
     # Load scheduler, tokenizer and models.
     if args.use_custom:
-        pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path, accelerator=accelerator)
+        pipeline = FrozenCustomPipe(path=args.pretrained_model_name_or_path, accelerator=accelerator, llm_name=args.llm_name)
         unet = pipeline.pipe.unet
         vae = pipeline.pipe.vae
         text_encoder = pipeline.pipe.text_encoder

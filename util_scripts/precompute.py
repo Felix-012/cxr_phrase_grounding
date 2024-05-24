@@ -31,6 +31,6 @@ if __name__ == "__main__":
 
     CONFIG_PATH= '/vol/ideadata/ce90tate/cxr_phrase_grounding/configs/config_msxcr.yml'
 
-    vae = FrozenCustomPipe().pipe.vae
+    vae = FrozenCustomPipe(path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components").pipe.vae
     vae.requires_grad_(False)
     precompute_images(CONFIG_PATH, vae)

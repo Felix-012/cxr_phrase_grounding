@@ -16,4 +16,5 @@ accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/training/train_rad
 --cache_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/.cache \
 --generation_validation_epochs=50 \
 --train_batch_size=64 \
---resume_from_checkpoint=latest
+--resume_from_checkpoint=latest \
+--llm_name=radbert

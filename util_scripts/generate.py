@@ -48,7 +48,7 @@ def generate_images(csv_file, output_folder, start_index=0, num_threads=4):
 
     # Initialize the pipeline
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    pipeline = FrozenCustomPipe().pipe
+    pipeline = FrozenCustomPipe(path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components").pipe
     pipeline.load_lora_weights("/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert/checkpoint-30000")
     pipeline = pipeline.to(device)
 
@@ -75,7 +75,7 @@ def generate_images(csv_file, output_folder, start_index=0, num_threads=4):
 #load_and_save_images("/vol/ideadata/ce90tate/data/mimic/p19_5k_preprocessed_evenly.csv",
 #                    "/vol/ideadata/ce90tate/data/mimic/test/sample_images")
 
-pipe = FrozenCustomPipe().pipe
+pipe = FrozenCustomPipe(path="/vol/ideadata/ce90tate/cxr_phrase_grounding/components").pipe
 pipe.load_lora_weights("/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert/checkpoint-30000")
 image = pipe("front view, pneumonia lower left lung", num_inference_steps=30, cross_attention_kwargs={"scale": 0.95}).images[0]
 image.save("pneumonia_12.jpg")

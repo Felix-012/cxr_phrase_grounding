@@ -31,7 +31,7 @@ def main(args):
     config = load_config(args.config)
     if not os.path.exists(img_dir):
         os.makedirs(img_dir, exist_ok=True)
-        model = FrozenCustomPipe().pipe
+        model = FrozenCustomPipe(path=config.component_dir).pipe
 
         device = torch.device("cuda")
         model = model.to(device)

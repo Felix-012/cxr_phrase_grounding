@@ -46,7 +46,7 @@ def compute_masks(rank, config, world_size):
 
     lora_weights = config.lora_weights
     dataset = get_dataset(config, "test")
-    pipeline = FrozenCustomPipe(save_attention=True, inpaint=True).pipe
+    pipeline = FrozenCustomPipe(path=config.component_dir, save_attention=True, inpaint=True).pipe
     pipeline.load_lora_weights(lora_weights)
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
@@ -173,7 +173,7 @@ def compute_iou_score(config):
         if config.phrase_grounding_mode:
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
-    pipeline = FrozenCustomPipe(save_attention=True, inpaint=True).pipe
+    pipeline = FrozenCustomPipe(path=config.component_dir, save_attention=True, inpaint=True).pipe
     pipeline.load_lora_weights(lora_weights)
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
