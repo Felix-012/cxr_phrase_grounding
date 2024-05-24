@@ -18,4 +18,5 @@ accelerate launch $WORK/cxr_phrase_grounding/training/train.py \
 --train_batch_size=16 \
 --resume_from_checkpoint=latest \
 --lr_warmup_steps=0 \
---use_ema
+--use_ema \
+--llm_name=radbert
