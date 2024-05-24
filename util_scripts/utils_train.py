@@ -1,5 +1,5 @@
 import os
-from random import random
+from random import choice
 import numpy as np
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -21,12 +21,12 @@ def tokenize_captions(caption_data, tokenizer, is_train=True):
         if isinstance(caption, str):
             if '|' in caption:
                 caption = caption.split('|')
-                captions.append(random.choice(caption) if is_train else caption[0])
+                captions.append(choice(caption) if is_train else caption[0])
                 continue
             captions.append(caption)
         elif isinstance(caption, (list, np.ndarray)):
             # take a random caption if there are multiple
-            captions.append(random.choice(caption) if is_train else caption[0])
+            captions.append(choice(caption) if is_train else caption[0])
         else:
             raise ValueError(
                 f"Caption column `{captions}` should contain either strings or lists of strings."

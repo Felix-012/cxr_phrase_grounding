@@ -25,8 +25,6 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-   http://www.apache.org/licenses/LICENSE-2.0
-
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -36,19 +34,17 @@ limitations under the License.
 import os
 import pathlib
 import random
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 import numpy as np
 import pandas as pd
+import skimage
 import torch
+import torchvision
 import torchvision.transforms as TF
 import torchxrayvision as xrv
-import torchvision
-import skimage
-from PIL import Image
+from einops import rearrange, repeat
 from scipy import linalg
 from torch.nn.functional import adaptive_avg_pool2d
-from einops import rearrange, repeat
 
 try:
     from tqdm import tqdm

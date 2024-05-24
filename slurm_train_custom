@@ -11,7 +11,7 @@
 
 unset SLURM_EXPORT_ENV
 
-cd $WORK/cxr_phrase_grounding
+cd $WORK/cxr_phrase_grounding || exit
 
 export PYTHONPATH=$PWD
 

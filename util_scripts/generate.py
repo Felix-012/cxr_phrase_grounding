@@ -1,10 +1,8 @@
-import pandas as pd
-from diffusers import StableDiffusionPipeline
-from PIL import Image
-import torch
-from custom_pipe import FrozenCustomPipe
 import os
-import matplotlib.pyplot as plt
+from PIL import Image
+from custom_pipe import FrozenCustomPipe
+import pandas as pd
+import torch
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -33,9 +31,7 @@ def load_and_save_images(csv_file, output_folder):
             print(f"Error occurred while opening or saving the image from {image_path}")
 
 
-import pandas as pd
-import torch
-from concurrent.futures import ThreadPoolExecutor
+
 
 def generate_image(index, impression, pipeline, output_folder):
     # Generate the image

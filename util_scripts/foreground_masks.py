@@ -28,7 +28,7 @@ class GMMMaskSuggestor:
         self.gmm.fit(rearrange(mask.to("cpu"), "h w -> (h w) 1"))
         threshold = np.mean(self.gmm.means_)
         binary_img = mask > threshold
-        return binary_img.to(device)
+        return binary_img
 
     def get_rectangular_inpainting_mask(self, segmentation_mask):
         """ Get rectangular map of where to inpaint. Can overlap with object. In this case the object will not be inpainted and multiple inpainting spots are generate around the object.

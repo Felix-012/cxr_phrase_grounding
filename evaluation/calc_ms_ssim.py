@@ -1,23 +1,23 @@
-import random
-
-from evaluation.utils import get_compute_mssim
-from log import logger, log_experiment
-import os
-import logging
-import torch
-from log import formatter as log_formatter
-from datasets import get_dataset
 import datetime
-from torch import autocast
-from PIL import Image
-from pytorch_lightning import seed_everything
-import time
 import json
+import logging
+import os
+import time
+
 import numpy as np
+import torch
+from PIL import Image
 from einops import rearrange
-from evaluation.mssim import calc_ms_ssim_for_path_ordered, get_mscxr_synth_dataset
-from datasets.utils import load_config
+from pytorch_lightning import seed_everything
+from torch import autocast
+
 from custom_pipe import FrozenCustomPipe
+from datasets import get_dataset
+from datasets.utils import load_config
+from evaluation.mssim import calc_ms_ssim_for_path_ordered, get_mscxr_synth_dataset
+from evaluation.utils import get_compute_mssim
+from log import formatter as log_formatter
+from log import logger
 
 
 def main(args):
@@ -89,7 +89,7 @@ def main(args):
                             break
 
     if len(os.listdir(img_dir)) < args.n_sample_sets:
-        logger.warning(f"Found fewer samples than specified. Fallback to using fewer samples. Given: {os.listdir(img_dir)}, Needed: {opt.n_sample_sets}")
+        logger.warning(f"Found fewer samples than specified. Fallback to using fewer samples. Given: {os.listdir(img_dir)}, Needed: {args.n_sample_sets}")
 
     mean, sd = calc_ms_ssim_for_path_ordered(img_dir, trial_size=args.trial_size)
     with open(os.path.join(img_dir, "ms_ssim_results.json"), "w") as file:
