@@ -473,7 +473,8 @@ def main():
                             tokenizer=tokenizer,
                             unet=accelerator.unwrap_model(unet),
                             safety_checker=None,
-                            feature_extractor=None
+                            feature_extractor=None,
+                            scheduler=noise_scheduler
                     )
 
                     pipeline = pipeline.to(accelerator.device)
