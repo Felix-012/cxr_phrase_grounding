@@ -5,6 +5,7 @@ import torch
 from custom_pipe import FrozenCustomPipe
 import os
 import matplotlib.pyplot as plt
+from concurrent.futures import ThreadPoolExecutor
 
 
 def load_and_save_images(csv_file, output_folder):
@@ -32,31 +33,43 @@ def load_and_save_images(csv_file, output_folder):
             print(f"Error occurred while opening or saving the image from {image_path}")
 
 
-def generate_images(csv_file, output_folder, start_index=0):
+import pandas as pd
+import torch
+from concurrent.futures import ThreadPoolExecutor
+
+def generate_image(index, impression, pipeline, output_folder):
+    # Generate the image
+    image = pipeline(impression).images[0]
+
+    # Save the image
+    image_path = f"{output_folder}/image_{index + 1}.png"
+    image.save(image_path)
+    print(f"Saved {image_path}")
+
+def generate_images(csv_file, output_folder, start_index=0, num_threads=4):
     # Load the CSV file containing the image descriptions
     df = pd.read_csv(csv_file)
 
-    # Initialize the pipeline, make sure to replace `model_id` with your actual model
+    # Initialize the pipeline
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pipeline = FrozenCustomPipe().pipe
     pipeline.load_lora_weights("/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert/checkpoint-30000")
     pipeline = pipeline.to(device)
 
-    # Generate an image for each entry in the DataFrame starting from the specified index
-    for index, row in df.iterrows():
-        if index < start_index:
-            continue  # Skip rows until the start index is reached
+    # Use ThreadPoolExecutor to handle multiple threads
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        # Submit tasks to the executor
+        futures = []
+        for index, row in df.iterrows():
+            if index >= start_index:
+                impression = row['impression']
+                futures.append(executor.submit(generate_image, index, impression, pipeline, output_folder))
 
-        # Assume that the column containing the text descriptions is named 'description'
-        impression = row['impression']
+        # Wait for all futures to complete
+        for future in futures:
+            future.result()
 
-        # Generate the image
-        image = pipeline(impression).images[0]
 
-        # Save the image
-        image_path = f"{output_folder}/image_{index + 1}.png"
-        image.save(image_path)
-        print(f"Saved {image_path}")
 
 
 # Example usage

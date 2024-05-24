@@ -467,8 +467,7 @@ def main():
                         f" {args.validation_prompt}."
                     )
 
-                    pipeline = StableDiffusionPipeline.from_pretrained(
-                            args.pretrained_model_name_or_path,
+                    pipeline = StableDiffusionPipeline(
                             vae=accelerator.unwrap_model(vae),
                             text_encoder=accelerator.unwrap_model(text_encoder),
                             tokenizer=tokenizer,
