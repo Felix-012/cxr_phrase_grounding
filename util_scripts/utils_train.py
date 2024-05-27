@@ -295,7 +295,7 @@ def get_parser_arguments_train(parser):
     )
     parser.add_argument("--use_ema", action="store_true", help="Whether to use EMA model.")
     parser.add_argument("--use_custom", action="store_true", help="Whether to use a custom model.")
-    parser.add_argument("--llm_name", type=str, default=None, choices=["radbert", "chexpert"],
+    parser.add_argument("--llm_name", type=str, default=None, choices=["radbert", "chexagent"],
                         help="Name of the custom text encoder to use."
                                                                                                          "custom")
 

@@ -7,7 +7,7 @@ accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/training/train.py 
 --max_grad_norm=1 \
 --lr_scheduler="cosine" \
 --lr_warmup_steps=0 \
---output_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/radbert \
+--output_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/chexagent \
 --checkpointing_steps=50 \
 --validation_epochs=50 \
 --seed=1337 \
@@ -17,5 +17,5 @@ accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/training/train.py 
 --generation_validation_epochs=50 \
 --train_batch_size=16 \
 --resume_from_checkpoint=latest \
---use_ema \
+--use_custom \
 --llm_name=chexagent

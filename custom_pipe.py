@@ -1,6 +1,6 @@
 import os.path
 import torch
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoProcessor
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel, \
     StableDiffusionInpaintPipeline
 from util_scripts.attention_maps import (
@@ -15,14 +15,22 @@ def _freeze(model):
     for param in model.parameters():
         param.requires_grad = False
 
-def _load_text_encoder(component_name, path, torch_dtype, variant=None):
-    return AutoModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
+def _load_text_encoder(component_name, path, torch_dtype, llm_name, variant=None):
+    if llm_name == "chexagent":
+        return AutoModelForCausalLM.from_pretrained(os.path.join(path, component_name), torch_dtype=torch_dtype,
+                                                    variant=variant, trust_remote_code=True)
+    else:
+        return AutoModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
+
 
 def _load_unet(component_name, path, torch_dtype, variant=None):
     return UNet2DConditionModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
 
-def _load_tokenizer(component_name, path, torch_dtype, variant=None):
-    return AutoTokenizer.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
+def _load_tokenizer(component_name, path, torch_dtype, llm_name, variant=None):
+    if llm_name == "chexagent":
+        return AutoProcessor.from_pretrained(os.path.join(path, component_name), torch_dtype=torch_dtype, variant=variant, trust_remote_code=True)
+    else:
+        return AutoTokenizer.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
 def _load_scheduler(component_name, path, torch_dtype, variant=None):
     return DDPMScheduler.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
@@ -32,7 +40,7 @@ def _load_vae(component_name, path, torch_dtype, variant=None):
 
 
 class FrozenCustomPipe:
-    def __init__(self, use_freeze=True, path=None,variant=None,llm_name=None, torch_dtype=torch.float32, device="cuda",
+    def __init__(self, use_freeze=True, path=None,variant=None,llm_name="", torch_dtype=torch.float32, device="cuda",
                  save_attention=False, inpaint=False, accelerator=None):
         self.device = device
         component_loader = {
@@ -51,7 +59,7 @@ class FrozenCustomPipe:
                 print(f"Loading {component_name}...")
             if component_name == "tokenizer" or component_name == "text_encoder":
                 component = component_loader.get(component_name)(component_name, os.path.join(path, llm_name),
-                                                                 torch_dtype, variant)
+                                                                 torch_dtype, llm_name, variant)
             else:
                 component = component_loader.get(component_name)(component_name, path, torch_dtype, variant)
             component_mapper[component_name] = component

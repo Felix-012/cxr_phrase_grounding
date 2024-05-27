@@ -7,9 +7,10 @@ data_dir: /vol/ideadata/ce90tate/data/mimic
 component_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/components
 mask_dir: /vol/ideadata/ce90tate/preliminary_masks
 log_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/log
-lora_weights: /vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert/checkpoint-30000
+lora_weights: /vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/clip/checkpoint-30000
 num_workers: 0
 num_chunks: 1
+checkpoint: /vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal
 
 dataloading:
   batch_size: 8

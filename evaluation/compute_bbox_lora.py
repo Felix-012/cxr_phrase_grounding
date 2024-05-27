@@ -35,9 +35,10 @@ from torch.utils.data.distributed import DistributedSampler
 from custom_pipe import FrozenCustomPipe
 from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
 from log import logger
+from accelerate import Accelerator
 
 
-def compute_masks(rank, config, world_size):
+def compute_masks(rank, config, world_size, use_lora):
     logger.info(f"Current rank: {rank}")
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
@@ -46,8 +47,16 @@ def compute_masks(rank, config, world_size):
 
     lora_weights = config.lora_weights
     dataset = get_dataset(config, "test")
+    accelerator = Accelerator()
+
+
     pipeline = FrozenCustomPipe(path=config.component_dir, save_attention=True, inpaint=True).pipe
-    pipeline.load_lora_weights(lora_weights)
+
+    if use_lora:
+        pipeline.load_lora_weights(lora_weights)
+    else:
+        accelerator.load_state(config.checkpoint)
+
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
     pipeline.text_encoder.requires_grad_(False)
@@ -137,9 +146,9 @@ def compute_masks(rank, config, world_size):
                         # plt.imsave(f"attn_map_all_down_{j}.jpg",
                         #            attention[9:, :, token_positions[0]:token_positions[-1]].mean(
                         #                dim=(0, 1, 2)))
-                        vis(tok_attention.mean(dim=(0,1,2)))
+                        #vis(tok_attention.mean(dim=(0,1,2)))
                     else:
-                        i = 0
+                        #i = 0
                         for location in locations:
                             tok_attention = attention[:,:,token_positions[location]:token_positions[location+1]]
                             tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
@@ -148,10 +157,10 @@ def compute_masks(rank, config, world_size):
                             # plt.imsave(f"attn_map_mid_{query_words[i]}.jpg", attention[8:9,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))
                             # plt.imsave(f"attn_map_down_{query_words[i]}.jpg", attention[9:,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))
                             # plt.show()
-                            vis(attention[7:8,:,token_positions[location]:token_positions[location+1]].mean(dim=(0,1,2)))
-                            vis(samples["bbox_img"][j])
-                            vis(tok_attention.mean(dim=(0,1,2)))
-                            i += 1
+                            #vis(attention[7:8,:,token_positions[location]:token_positions[location+1]].mean(dim=(0,1,2)))
+                            #vis(samples["bbox_img"][j])
+                            #vis(tok_attention.mean(dim=(0,1,2)))
+                            #i += 1
 
                     preliminary_attention_mask = torch.stack(tok_attentions).mean(dim=(0))
                     path = samples_to_path(mask_dir, samples, j)
@@ -312,6 +321,8 @@ def get_args():
                         help="If set, then we use shortened impressions from mscxr")
     parser.add_argument("--phrase_grounding_mode", action="store_true", default=False,
                         help="If set, then we use shortened impressions from mscxr")
+    parser.add_argument("--use_lora", action="store_true", default=False,
+                        help="If set, then lora weights are sued")
     return parser.parse_args()
 
 
@@ -325,5 +336,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    compute_masks(1, config, world_size)
+    compute_masks(1, config, world_size, args.use_lora)
     compute_iou_score(config)

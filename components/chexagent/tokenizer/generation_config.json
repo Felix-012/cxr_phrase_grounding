@@ -1,0 +1,14 @@
+{
+  "_from_model_config": true,
+  "bos_token_id": 1,
+  "eos_token_id": 2,
+  "do_sample": false,
+  "num_beams": 5,
+  "min_length": 0,
+  "max_length": 512,
+  "top_p": 1.0,
+  "repetition_penalty": 1.0,
+  "length_penalty": 1.0,
+  "temperature": 1,
+  "transformers_version": "4.35.2"
+}
