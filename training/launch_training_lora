@@ -10,7 +10,7 @@ accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/training/train_rad
 --output_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert \
 --checkpointing_steps=50 \
 --validation_epochs=50 \
---seed=1337 \
+--seed=4200 \
 --config=/vol/ideadata/ce90tate/cxr_phrase_grounding/configs/config_msxcr.yml \
 --validation_prompt="An image of a chest xray" \
 --cache_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/.cache \

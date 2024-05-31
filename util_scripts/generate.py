@@ -1,12 +1,19 @@
 import argparse
 import os
 from PIL import Image
+from accelerate import Accelerator
+from diffusers import StableDiffusionPipeline, UNet2DConditionModel, EMAModel
+from matplotlib import pyplot as plt
 from torchvision.utils import save_image
+import copy
 
-from custom_pipe import FrozenCustomPipe
+import pickle as pkl
+from custom_pipe import FrozenCustomPipe, _load_unet
 import pandas as pd
 import torch
 import torch.distributed as dist
+from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
+from preliminary_masks import preprocess_attention_maps
 
 
 
@@ -60,9 +67,13 @@ def generate_images_distributed(csv_file, output_folder, start_index=0, rank=0, 
     pipeline.to(device)
 
     # Generate an image for each entry in the DataFrame starting from the specified index
-    for index, row in enumerate(df.itertuples(), start=1):
+    for index, row in enumerate(df.itertuples(), start=0):
         if index < start_index or index % world_size != rank:
             continue  # Skip rows that do not align with this GPU's turn
+        image_path = f"{output_folder}/image_{index + 1}.png"
+
+        if os.path.isfile(image_path):
+            continue
 
         # Assume that the column containing the text descriptions is named 'description'
         impression = getattr(row, 'impression')
@@ -71,7 +82,7 @@ def generate_images_distributed(csv_file, output_folder, start_index=0, rank=0, 
         image = pipeline(impression).images[0]
 
         # Save the image
-        image_path = f"{output_folder}/image_{index + 1}.png"
+
         image.save(image_path)
         print(f"Saved {image_path}")
 
@@ -95,8 +106,8 @@ def main():
 
     generate_images_distributed(args.csv_file, args.output_folder, args.start_index, int(os.environ['LOCAL_RANK']), world_size)
 
-if __name__ == '__main__':
-    main()
+#if __name__ == '__main__':
+#    main()
 
 #load_and_save_images("/vol/ideadata/ce90tate/data/mimic/p19_5k_preprocessed_evenly.csv",
 #                    "/vol/ideadata/ce90tate/data/mimic/test/sample_images")
@@ -105,3 +116,45 @@ if __name__ == '__main__':
 # pipe.load_lora_weights("/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/radbert/checkpoint-30000")
 # image = pipe("front view, pneumonia lower left lung", num_inference_steps=30, cross_attention_kwargs={"scale": 0.95}).images[0]
 # image.save("pneumonia_12.jpg")
+def load_model_hook(models, input_dir):
+    ema_unet = _load_unet(component_name="unet", path="runwayml/stable-diffusion-v1-5", torch_dtype=torch.float32)
+    ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+    ema_unet.to("cuda")
+    load_model = EMAModel.from_pretrained("/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/clip/checkpoint-30000/unet_ema", UNet2DConditionModel)
+    ema_unet.load_state_dict(load_model.state_dict())
+    del load_model
+
+    for _ in range(len(models)):
+        # pop models so that they are not loaded again
+        model = models.pop()
+
+        # load diffusers style into model
+        load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+        model.register_to_config(**load_model.config)
+
+        model.load_state_dict(load_model.state_dict())
+        del load_model
+
+def vis(tensor):
+    plt.imshow(tensor)
+    plt.show()
+
+accelerator = Accelerator()
+ema_unet = _load_unet(component_name="unet", path="runwayml/stable-diffusion-v1-5", torch_dtype=torch.float32)
+ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+ema_unet.to("cuda")
+load_model = EMAModel.from_pretrained(
+    "/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/clip/checkpoint-30000/unet_ema", UNet2DConditionModel)
+ema_unet.load_state_dict(load_model.state_dict())
+del load_model
+
+curr_attn_maps.clear()
+all_attn_maps.clear()
+pipeline = FrozenCustomPipe(path="runwayml/stable-diffusion-v1-5", save_attention=True, llm_name="clip").pipe
+#image1 = pipeline("pneumonia lower left lung", num_inference_steps=30).images[0]
+#image1.save("bla1.png")
+ema_unet.copy_to(pipeline.unet.parameters())
+images = pipeline("AP view of the chest. in the mid right lung, there is a new round opacity", num_inference_steps=30).images
+attention_images = preprocess_attention_maps(all_attn_maps)
+#image2.save("bla2.png")
+pipeline.unet.save_pretrained("/vol/ideadata/ce90tate/", safe_serialization=False)

@@ -5,6 +5,8 @@ import os
 import shutil
 import time
 
+from diffusers import UNet2DConditionModel, EMAModel
+
 from datasets.dataset import add_preliminary_to_sample
 
 os.environ["TOKENIZERS_PARALLELISM"]="false"
@@ -32,7 +34,7 @@ from torch.utils.data import DataLoader
 from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
-from custom_pipe import FrozenCustomPipe
+from custom_pipe import FrozenCustomPipe, _load_unet
 from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
 from log import logger
 from accelerate import Accelerator
@@ -47,15 +49,20 @@ def compute_masks(rank, config, world_size, use_lora):
 
     lora_weights = config.lora_weights
     dataset = get_dataset(config, "test")
-    accelerator = Accelerator()
 
 
-    pipeline = FrozenCustomPipe(path=config.component_dir, save_attention=True, inpaint=True).pipe
+    pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name).pipe
 
     if use_lora:
         pipeline.load_lora_weights(lora_weights)
     else:
-        accelerator.load_state(config.checkpoint)
+        ema_unet = EMAModel(pipeline.unet.parameters(), model_cls=UNet2DConditionModel,
+                            model_config=pipeline.unet.config)
+        ema_unet.to("cuda")
+        load_model = EMAModel.from_pretrained(os.path.join(config.checkpoint, "unet_ema"), UNet2DConditionModel)
+        ema_unet.load_state_dict(load_model.state_dict())
+        del load_model
+        ema_unet.copy_to(pipeline.unet.parameters())
 
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
@@ -75,7 +82,7 @@ def compute_masks(rank, config, world_size, use_lora):
 
     cond_key = config.cond_stage_key if hasattr(config, "cond_stage_key") else "label_text"
 
-    data_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+
     logger.info(f"Relative path to first sample: {dataset[0]['rel_path']}")
 
     dataloader = DataLoader(dataset,
@@ -84,7 +91,6 @@ def compute_masks(rank, config, world_size, use_lora):
                             num_workers=0,  #opt.num_workers,
                             collate_fn=collate_batch,
                             drop_last=False,
-                            sampler=data_sampler,
                             )
 
     if hasattr(config, "mask_dir"):
@@ -106,7 +112,7 @@ def compute_masks(rank, config, world_size, use_lora):
                 latents = [sample.latent_dist.sample() * pipeline.vae.scaling_factor for sample in samples["img"]]
                 curr_attn_maps.clear()
                 all_attn_maps.clear()
-                pipeline(prompt=samples["impression"], mask_image=mask, image=latents, num_inference_steps=30, cross_attention_kwargs={"scale": 0.9})
+                images = pipeline(prompt=samples["impression"], num_inference_steps=30, guidance_scale=4.0).images
                 attention_images = preprocess_attention_maps(all_attn_maps, on_cpu=True)
 
                 for j, attention in enumerate(list(attention_images)):
@@ -148,6 +154,7 @@ def compute_masks(rank, config, world_size, use_lora):
                         #                dim=(0, 1, 2)))
                         #vis(tok_attention.mean(dim=(0,1,2)))
                     else:
+
                         #i = 0
                         for location in locations:
                             tok_attention = attention[:,:,token_positions[location]:token_positions[location+1]]
@@ -169,7 +176,7 @@ def compute_masks(rank, config, world_size, use_lora):
                     torch.save(preliminary_attention_mask.to("cpu"), path)
 
 
-def compute_iou_score(config):
+def compute_iou_score(config, use_lora):
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
     else:
@@ -182,8 +189,17 @@ def compute_iou_score(config):
         if config.phrase_grounding_mode:
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
-    pipeline = FrozenCustomPipe(path=config.component_dir, save_attention=True, inpaint=True).pipe
-    pipeline.load_lora_weights(lora_weights)
+    pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name).pipe
+    if use_lora:
+        pipeline.load_lora_weights(lora_weights)
+    else:
+        ema_unet = EMAModel(pipeline.unet.parameters(), model_cls=UNet2DConditionModel,
+                            model_config=pipeline.unet.config)
+        ema_unet.to("cuda")
+        load_model = EMAModel.from_pretrained(os.path.join(config.checkpoint, "unet_ema"), UNet2DConditionModel)
+        ema_unet.load_state_dict(load_model.state_dict())
+        del load_model
+        ema_unet.copy_to(pipeline.unet.parameters())
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
     pipeline.text_encoder.requires_grad_(False)
@@ -322,7 +338,10 @@ def get_args():
     parser.add_argument("--phrase_grounding_mode", action="store_true", default=False,
                         help="If set, then we use shortened impressions from mscxr")
     parser.add_argument("--use_lora", action="store_true", default=False,
-                        help="If set, then lora weights are sued")
+                        help="If set, then lora weights are used")
+    parser.add_argument("--llm_name", type=str, default="", choices=["chexagent", "radbert", "clip"],
+                        help="Name of the llm to use")
+    parser.add_argument("--path", type=str, default="", help="Path to the repository or local folder of the pipeline")
     return parser.parse_args()
 
 
@@ -336,5 +355,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    compute_masks(1, config, world_size, args.use_lora)
-    compute_iou_score(config)
+    compute_masks(2, config, world_size, args.use_lora)
+    compute_iou_score(config, args.use_lora)

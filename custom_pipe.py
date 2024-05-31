@@ -1,6 +1,6 @@
 import os.path
 import torch
-from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoProcessor
+from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoProcessor, CLIPTextModel
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel, \
     StableDiffusionInpaintPipeline
 from util_scripts.attention_maps import (
@@ -19,8 +19,10 @@ def _load_text_encoder(component_name, path, torch_dtype, llm_name, variant=None
     if llm_name == "chexagent":
         return AutoModelForCausalLM.from_pretrained(os.path.join(path, component_name), torch_dtype=torch_dtype,
                                                     variant=variant, trust_remote_code=True)
+    elif llm_name == "clip":
+        return CLIPTextModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
     else:
-        return AutoModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
+        return AutoModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
 
 def _load_unet(component_name, path, torch_dtype, variant=None):
@@ -41,7 +43,7 @@ def _load_vae(component_name, path, torch_dtype, variant=None):
 
 class FrozenCustomPipe:
     def __init__(self, use_freeze=True, path=None,variant=None,llm_name="", torch_dtype=torch.float32, device="cuda",
-                 save_attention=False, inpaint=False, accelerator=None):
+                 save_attention=False, inpaint=False, accelerator=None, load_local=False):
         self.device = device
         component_loader = {
             "text_encoder": _load_text_encoder,
@@ -57,9 +59,11 @@ class FrozenCustomPipe:
                 accelerator.print(f"Loading {component_name}...")
             else:
                 print(f"Loading {component_name}...")
-            if component_name == "tokenizer" or component_name == "text_encoder":
+            if load_local and (component_name == "tokenizer" or component_name == "text_encoder"):
                 component = component_loader.get(component_name)(component_name, os.path.join(path, llm_name),
                                                                  torch_dtype, llm_name, variant)
+            elif component_name == "tokenizer" or component_name == "text_encoder":
+                component = component_loader.get(component_name)(component_name, path, torch_dtype, llm_name, variant)
             else:
                 component = component_loader.get(component_name)(component_name, path, torch_dtype, variant)
             component_mapper[component_name] = component
@@ -75,7 +79,8 @@ class FrozenCustomPipe:
         if inpaint:
             pipe = StableDiffusionInpaintPipeline(unet=component_mapper["unet"], text_encoder=component_mapper["text_encoder"],
                                        tokenizer=component_mapper["tokenizer"], vae=component_mapper["vae"],
-                                       scheduler=component_mapper["scheduler"],safety_checker=None, feature_extractor=None,                             requires_safety_checker=False)
+                                       scheduler=component_mapper["scheduler"],safety_checker=None, feature_extractor=None,
+                                                  requires_safety_checker=False)
         else:
             pipe = StableDiffusionPipeline(unet=component_mapper["unet"], text_encoder=component_mapper["text_encoder"],
                                        tokenizer=component_mapper["tokenizer"], vae=component_mapper["vae"],

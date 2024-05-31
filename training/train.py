@@ -364,6 +364,8 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps).to(dtype=weight_dtype)
 
                 # Get the text embedding for conditioning
+                print(f"tokens: {batch['input_ids'].shape}")
+                print(f"masks: {batch['attention_mask'].shape}")
                 encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
                 # Get the target for loss depending on the prediction type
@@ -530,7 +532,7 @@ def main():
             unet=unet,
         )
 
-        pipeline.save_pretrained(args.output_dir)
+        pipeline.unet.save_pretrained(args.output_dir)
 
         accelerator.end_training()
 
