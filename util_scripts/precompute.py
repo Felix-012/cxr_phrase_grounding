@@ -18,7 +18,7 @@ def precompute_images(config_path, model):
 
 
     config = load_config(config_path)
-    dataset = get_dataset(config, "test")
+    dataset = get_dataset(config, "train")
 
     # Run the precompute process using the provided model
     dataset.load_precomputed(model)
@@ -28,6 +28,7 @@ def precompute_images(config_path, model):
 
 if __name__ == "__main__":
     # Example usage of the precompute_images function
+
 
     CONFIG_PATH= '/vol/ideadata/ce90tate/cxr_phrase_grounding/configs/config_msxcr.yml'
 

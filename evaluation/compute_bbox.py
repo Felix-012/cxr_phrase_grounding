@@ -51,7 +51,7 @@ def compute_masks(rank, config, world_size, use_lora):
     dataset = get_dataset(config, "test")
 
 
-    pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name).pipe
+    pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name, inpaint=True).pipe
 
     if use_lora:
         pipeline.load_lora_weights(lora_weights)
@@ -82,7 +82,7 @@ def compute_masks(rank, config, world_size, use_lora):
 
     cond_key = config.cond_stage_key if hasattr(config, "cond_stage_key") else "label_text"
 
-
+    data_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
     logger.info(f"Relative path to first sample: {dataset[0]['rel_path']}")
 
     dataloader = DataLoader(dataset,
@@ -91,6 +91,7 @@ def compute_masks(rank, config, world_size, use_lora):
                             num_workers=0,  #opt.num_workers,
                             collate_fn=collate_batch,
                             drop_last=False,
+                            sampler=data_sampler
                             )
 
     if hasattr(config, "mask_dir"):
@@ -109,10 +110,10 @@ def compute_masks(rank, config, world_size, use_lora):
                 samples[cond_key] = [str(x.split("|")[0]) for x in samples[cond_key]]
                 samples["impression"] = samples[cond_key]
                 mask = torch.ones((config.sample.iou_batch_size, config.sample.latent_C, config.sample.latent_W, config.sample.latent_H)).to(pipeline.device)
-                latents = [sample.latent_dist.sample() * pipeline.vae.scaling_factor for sample in samples["img"]]
+                latents = [sample.latent_dist.sample().to(pipeline.device) * pipeline.vae.scaling_factor for sample in samples["img"]]
                 curr_attn_maps.clear()
                 all_attn_maps.clear()
-                images = pipeline(prompt=samples["impression"], num_inference_steps=30, guidance_scale=4.0).images
+                images = pipeline(prompt=samples["impression"], num_inference_steps=30, guidance_scale=4.0, mask_image=mask, image=latents).images
                 attention_images = preprocess_attention_maps(all_attn_maps, on_cpu=True)
 
                 for j, attention in enumerate(list(attention_images)):
@@ -130,8 +131,12 @@ def compute_masks(rank, config, world_size, use_lora):
                                          return_tensors="pt")["input_ids"]
                     token_lens = []
                     for out in outs:
-                        out = list(filter(lambda x: x != 0, out))
-                        token_lens.append(len(out)-2)
+                        if args.llm_name == "clip":
+                            out = list(filter(lambda x: x != 49407, out))
+                            token_lens.append(len(out) - 1)
+                        else:
+                            out = list(filter(lambda x: x != 0, out))
+                            token_lens.append(len(out)-2)
 
                     token_positions = list(np.cumsum(token_lens) + 1)
                     token_positions = [1,] + token_positions
@@ -140,7 +145,7 @@ def compute_masks(rank, config, world_size, use_lora):
                     locations = word_to_slice(txt_label.split(" "), query_words)
                     if len(locations) == 0:
                         # use all
-                        tok_attention = attention[:,:,token_positions[0]:token_positions[-1]]
+                        tok_attention = attention[7:8,-10:,token_positions[0]:token_positions[-1]]
                         tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
                         # plt.imsave(f"attn_map_all_{j}.jpg", tok_attention.mean(dim=(0, 1, 2)))
                         # plt.imsave(f"attn_map_all_up_{j}.jpg",
@@ -157,7 +162,7 @@ def compute_masks(rank, config, world_size, use_lora):
 
                         #i = 0
                         for location in locations:
-                            tok_attention = attention[:,:,token_positions[location]:token_positions[location+1]]
+                            tok_attention = attention[6:7,-20:,token_positions[location]:token_positions[location+1]]
                             tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
                             # plt.imsave(f"attn_map_{query_words[i]}.jpg", tok_attention.mean(dim=(0,1,2)))
                             # plt.imsave(f"attn_map_up_{query_words[i]}.jpg", attention[:8,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))
@@ -189,7 +194,7 @@ def compute_iou_score(config, use_lora):
         if config.phrase_grounding_mode:
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
-    pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name).pipe
+    pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name, inpaint=True).pipe
     if use_lora:
         pipeline.load_lora_weights(lora_weights)
     else:
@@ -355,5 +360,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    compute_masks(2, config, world_size, args.use_lora)
+    #compute_masks(2, config, world_size, args.use_lora)
     compute_iou_score(config, args.use_lora)

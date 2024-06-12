@@ -1,13 +1,13 @@
 #!/bin/bash
 accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/training/train.py \
---pretrained_model_name_or_path=/vol/ideadata/ce90tate/cxr_phrase_grounding/components \
+--pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
 --gradient_accumulation_steps=1 \
 --max_train_steps=15001 \
 --learning_rate=5e-05 \
 --max_grad_norm=1 \
 --lr_scheduler="cosine" \
 --lr_warmup_steps=0 \
---output_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/radbert \
+--output_dir=/vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/clip \
 --checkpointing_steps=50 \
 --validation_epochs=50 \
 --seed=4200 \
@@ -17,5 +17,4 @@ accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/training/train.py 
 --generation_validation_epochs=50 \
 --train_batch_size=16 \
 --resume_from_checkpoint=latest \
---use_ema \
---llm_name=chexagent
+--use_ema

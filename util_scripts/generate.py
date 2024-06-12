@@ -154,7 +154,11 @@ pipeline = FrozenCustomPipe(path="runwayml/stable-diffusion-v1-5", save_attentio
 #image1 = pipeline("pneumonia lower left lung", num_inference_steps=30).images[0]
 #image1.save("bla1.png")
 ema_unet.copy_to(pipeline.unet.parameters())
-images = pipeline("AP view of the chest. in the mid right lung, there is a new round opacity", num_inference_steps=30).images
+#images = pipeline("AP view of the chest. in the mid right lung, there is a new round opacity", num_inference_steps=30).images
+images = pipeline(["Pleural effusion in the lower left lung."] * 10, num_inference_steps=50, guidance_scale=4).images
 attention_images = preprocess_attention_maps(all_attn_maps)
+for i in range(len(images)):
+    vis(images[i])
+print("a")
 #image2.save("bla2.png")
-pipeline.unet.save_pretrained("/vol/ideadata/ce90tate/", safe_serialization=False)
+#pipeline.unet.save_pretrained("/vol/ideadata/ce90tate/", safe_serialization=False)

@@ -30,6 +30,7 @@ from datasets import get_dataset
 from datasets.utils import load_config
 from util_scripts.utils_generic import collate_batch
 from util_scripts.utils_train import get_latest_directory, get_parser_arguments_train, tokenize_captions, unwrap_model
+from evaluation.compute_bbox import vis
 
 logger = get_logger(__name__, log_level="INFO")
 

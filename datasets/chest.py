@@ -21,10 +21,10 @@ class MimicCXRDataset(FOBADataset):
         self._csv_file = "mimic_metadata_preprocessed.csv"
         if dataset_args.get("dataset_csv") is not None:
             self._csv_file = dataset_args.get("dataset_csv")
+        self.precomputed_base_dir = dataset_args.get("precomputed_base_dir")
         self._build_dataset()
         self.opt = opt
         self._precomputed_path = None
-        self.precomputed_base_dir=dataset_args.get("precomputed_base_dir")
         self._save_original_images = dataset_args.get("save_original_images", False)
         self.text_label_key = dataset_args.get("text_label_key", "impression")
         self.chunk_size = None
@@ -157,7 +157,7 @@ class MimicCXRDataset(FOBADataset):
 
     @property
     def meta_data_path(self):
-        return os.path.join(os.path.expandvars(self.base_dir), self._csv_file)
+        return os.path.join(os.path.expandvars(self.precomputed_base_dir), self._csv_file)
 
     @property
     def meta_data(self):
