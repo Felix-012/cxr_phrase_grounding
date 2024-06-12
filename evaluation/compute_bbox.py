@@ -35,7 +35,7 @@ from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
 from custom_pipe import FrozenCustomPipe, _load_unet
-from util_scripts.attention_maps import curr_attn_maps, all_attn_maps
+from util_scripts.attention_maps import all_attn_maps
 from log import logger
 from accelerate import Accelerator
 
@@ -111,7 +111,6 @@ def compute_masks(rank, config, world_size, use_lora):
                 samples["impression"] = samples[cond_key]
                 mask = torch.ones((config.sample.iou_batch_size, config.sample.latent_C, config.sample.latent_W, config.sample.latent_H)).to(pipeline.device)
                 latents = [sample.latent_dist.sample().to(pipeline.device) * pipeline.vae.scaling_factor for sample in samples["img"]]
-                curr_attn_maps.clear()
                 all_attn_maps.clear()
                 images = pipeline(prompt=samples["impression"], num_inference_steps=30, guidance_scale=4.0, mask_image=mask, image=latents).images
                 attention_images = preprocess_attention_maps(all_attn_maps, on_cpu=True)
@@ -360,5 +359,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    #compute_masks(2, config, world_size, args.use_lora)
+    compute_masks(2, config, world_size, args.use_lora)
     compute_iou_score(config, args.use_lora)

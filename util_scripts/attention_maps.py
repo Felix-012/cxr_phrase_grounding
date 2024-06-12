@@ -17,10 +17,7 @@ from diffusers.models.attention_processor import (
 logger = logging.get_logger(__name__)
 
 
-curr_attn_maps = {}
 all_attn_maps = {}
-
-
 
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
@@ -467,7 +464,7 @@ def hook_fn(name):
             # attn_maps[name] = module.processor.attn_map
             if not all_attn_maps.get(name):
                 all_attn_maps[name] = []
-            all_attn_maps[name].append(curr_attn_maps.get(name, torch.zeros_like(module.processor.attn_map)) + module.processor.attn_map)
+            all_attn_maps[name].append(torch.zeros_like(module.processor.attn_map) + module.processor.attn_map)
             del module.processor.attn_map
 
     return forward_hook
