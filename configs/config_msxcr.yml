@@ -32,6 +32,9 @@ datasets:
     save_original_images: false
     dataset_csv: mimic_metadata_preprocessed.csv
     num_chunks: 1
+    limit_dataset:
+      - 0
+      - 500
 
   test:
     dataset: chestxraymimicbbox

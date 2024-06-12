@@ -66,7 +66,7 @@ def get_parser_arguments_train(parser):
     parser.add_argument(
         "--num_validation_images",
         type=int,
-        default=20,
+        default=50,
         help="Number of images that should be generated during validation with `validation_prompt`.",
     )
     parser.add_argument(

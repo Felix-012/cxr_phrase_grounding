@@ -8,15 +8,14 @@ accelerate launch $WORK/cxr_phrase_grounding/training/train.py \
 --lr_scheduler="cosine" \
 --output_dir=$WORK/cxr_phrase_grounding/finetune/normal/clip \
 --report_to=wandb \
---checkpointing_steps=1000 \
+--checkpointing_steps=10000 \
 --validation_epochs=100 \
 --seed=4200 \
 --config=$WORK/cxr_phrase_grounding/configs/config_msxcr_hpc.yml \
---validation_prompt="An image of a chest xray" \
+--validation_prompt="Pleural effusion in the lower right chest." \
 --cache_dir=$WORK/cxr_phrase_grounding/.cache \
 --generation_validation_epochs=1000 \
 --train_batch_size=16 \
 --resume_from_checkpoint=latest \
 --lr_warmup_steps=0 \
---use_ema \
---llm_name=chexagent
+--use_ema
