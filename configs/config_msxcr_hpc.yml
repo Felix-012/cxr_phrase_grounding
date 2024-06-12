@@ -23,11 +23,11 @@ datasets:
     dataset: chestxraymimic
     base_dir: $WORK/data/mimic
     precomputed_base_dir: $WORK/data/mimic
-    split: mscxr
+    split: train
     preload: true
     shuffle: true
     save_original_images: false
-    dataset_csv: cxr-record-list-impressions-no_p19_pruned.csv
+    dataset_csv: mimic_metadata_preprocessed.csv
     num_chunks: 4
     chunk_path: $WORK/data/mimic/training_data_chunked
 
