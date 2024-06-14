@@ -35,7 +35,7 @@ from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
 from custom_pipe import FrozenCustomPipe, _load_unet
-from util_scripts.attention_maps import all_attn_maps
+from util_scripts.attention_maps import all_attn_maps, all_neg_attn_maps
 from log import logger
 from accelerate import Accelerator
 
@@ -112,8 +112,11 @@ def compute_masks(rank, config, world_size, use_lora):
                 mask = torch.ones((config.sample.iou_batch_size, config.sample.latent_C, config.sample.latent_W, config.sample.latent_H)).to(pipeline.device)
                 latents = [sample.latent_dist.sample().to(pipeline.device) * pipeline.vae.scaling_factor for sample in samples["img"]]
                 all_attn_maps.clear()
-                images = pipeline(prompt=samples["impression"], num_inference_steps=30, guidance_scale=4.0, mask_image=mask, image=latents).images
+                all_neg_attn_maps.clear()
+                images = pipeline(prompt=samples["impression"], num_inference_steps=50, guidance_scale=4.0, mask_image=mask, image=latents).images
                 attention_images = preprocess_attention_maps(all_attn_maps, on_cpu=True)
+                attention_images_neg = preprocess_attention_maps(all_neg_attn_maps, on_cpu=True)
+                #attention_images = (attention_images + attention_images_neg) / 2
 
                 for j, attention in enumerate(list(attention_images)):
                     tok_attentions = []
@@ -144,7 +147,7 @@ def compute_masks(rank, config, world_size, use_lora):
                     locations = word_to_slice(txt_label.split(" "), query_words)
                     if len(locations) == 0:
                         # use all
-                        tok_attention = attention[7:8,-10:,token_positions[0]:token_positions[-1]]
+                        tok_attention = attention[6:7,-40:,token_positions[0]:token_positions[-1]]
                         tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
                         # plt.imsave(f"attn_map_all_{j}.jpg", tok_attention.mean(dim=(0, 1, 2)))
                         # plt.imsave(f"attn_map_all_up_{j}.jpg",
@@ -161,7 +164,7 @@ def compute_masks(rank, config, world_size, use_lora):
 
                         #i = 0
                         for location in locations:
-                            tok_attention = attention[6:7,-20:,token_positions[location]:token_positions[location+1]]
+                            tok_attention = attention[6:7,-40:,token_positions[location]:token_positions[location+1]]
                             tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
                             # plt.imsave(f"attn_map_{query_words[i]}.jpg", tok_attention.mean(dim=(0,1,2)))
                             # plt.imsave(f"attn_map_up_{query_words[i]}.jpg", attention[:8,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))

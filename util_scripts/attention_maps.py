@@ -18,7 +18,7 @@ logger = logging.get_logger(__name__)
 
 
 all_attn_maps = {}
-
+all_neg_attn_maps = {}
 @dataclass
 class Transformer2DModelOutput(BaseOutput):
     """
@@ -289,7 +289,9 @@ def attn_call(
     # (20,4096,77) or (40,1024,77)
     if hasattr(self, "store_attn_map"):
         from einops import rearrange
-        self.attn_map = rearrange(attention_probs, '(b nh) (h w) d -> b nh d h w', h=height, b=batch_size)[batch_size//2:].mean(dim=1)
+        attn_map = rearrange(attention_probs, '(b nh) (h w) d -> b nh d h w', h=height, b=batch_size).mean(dim=1)
+        self.neg_attn_map = attn_map[:batch_size//2]
+        self.attn_map = attn_map[batch_size//2:]
     ####################################################################################################
     hidden_states = torch.bmm(attention_probs, value)
     hidden_states = attn.batch_to_head_dim(hidden_states)
@@ -464,8 +466,12 @@ def hook_fn(name):
             # attn_maps[name] = module.processor.attn_map
             if not all_attn_maps.get(name):
                 all_attn_maps[name] = []
+            if not all_neg_attn_maps.get(name):
+                all_neg_attn_maps[name] = []
             all_attn_maps[name].append(torch.zeros_like(module.processor.attn_map) + module.processor.attn_map)
+            all_neg_attn_maps[name].append(torch.zeros_like(module.processor.neg_attn_map) + module.processor.neg_attn_map)
             del module.processor.attn_map
+            del module.processor.neg_attn_map
 
     return forward_hook
 
