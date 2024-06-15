@@ -138,7 +138,7 @@ for entity_id, entity_info in data['entities'].items():
 # Convert lists to tensors
 input_nodes = torch.LongTensor([n[0] for n in nodes])  # Node indices
 input_edges = torch.LongTensor(edges)
-attn_edge_type = torch.LongTensor(edge_types)  # Map your edge types to integers if not already
+attn_edge_type = torch.LongTensor(edge_types)
 
 # Example tensor for attention bias (simplified, normally more complex)
 attn_bias = torch.zeros(len(nodes), len(nodes))  # A simple example, typically more complex logic needed
