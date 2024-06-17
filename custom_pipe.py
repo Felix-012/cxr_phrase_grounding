@@ -21,6 +21,8 @@ def _load_text_encoder(component_name, path, torch_dtype, llm_name, variant=None
                                                     variant=variant, trust_remote_code=True)
     elif llm_name == "clip":
         return CLIPTextModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype,variant=variant)
+    elif llm_name == "med-kebert":
+        return CLP_clinical(bert_model_name=llm_name)
     else:
         return AutoModel.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
 
