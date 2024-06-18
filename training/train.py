@@ -173,6 +173,7 @@ def main():
                 load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
                 ema_unet.load_state_dict(load_model.state_dict())
                 ema_unet.to(accelerator.device)
+                ema_unet.copy_to(unet.parameters())
                 del load_model
 
             for _ in range(len(models)):
