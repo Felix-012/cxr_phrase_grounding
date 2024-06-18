@@ -271,6 +271,8 @@ def main():
         [unet, optimizer, lr_scheduler, noise_scheduler, vae, text_encoder]
     )
 
+    accelerator.register_for_checkpointing(lr_scheduler)
+
     if args.use_ema:
         ema_unet.to(accelerator.device)
 
@@ -451,6 +453,7 @@ def main():
 
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
+                        unet.save_pretrained(save_path)
 
                         logger.info(f"Saved state to {save_path}")
 
