@@ -3,12 +3,13 @@ import torch
 from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM, AutoProcessor, CLIPTextModel
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDPMScheduler, UNet2DConditionModel, \
     StableDiffusionInpaintPipeline
+
+from clp_clinical import CLP_clinical
 from util_scripts.attention_maps import (
     cross_attn_init,
     register_cross_attention_hook,
     set_layer_with_name_and_path,
 )
-
 
 def _freeze(model):
     model = model.eval()
@@ -41,6 +42,12 @@ def _load_scheduler(component_name, path, torch_dtype, variant=None):
 
 def _load_vae(component_name, path, torch_dtype, variant=None):
     return AutoencoderKL.from_pretrained(path, subfolder=component_name, torch_dtype=torch_dtype, variant=variant)
+
+
+def init_attn_save(pipe):
+    cross_attn_init()
+    pipe.unet = set_layer_with_name_and_path(pipe.unet)
+    pipe.unet = register_cross_attention_hook(pipe.unet)
 
 
 class FrozenCustomPipe:
@@ -90,8 +97,7 @@ class FrozenCustomPipe:
                                        requires_safety_checker=False)
 
         if save_attention:
-            cross_attn_init()
-            pipe.unet = set_layer_with_name_and_path(pipe.unet)
-            pipe.unet = register_cross_attention_hook(pipe.unet)
+            init_attn_save(pipe)
 
         self.pipe = pipe.to(device)
+

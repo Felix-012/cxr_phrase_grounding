@@ -34,7 +34,7 @@ from torch.utils.data import DataLoader
 from datasets.utils import load_config
 from evaluation.utils import check_mask_exists, samples_to_path, contrast_to_noise_ratio
 from torch.utils.data.distributed import DistributedSampler
-from custom_pipe import FrozenCustomPipe, _load_unet
+from custom_pipe import FrozenCustomPipe, init_attn_save
 from util_scripts.attention_maps import all_attn_maps, all_neg_attn_maps
 from log import logger
 from accelerate import Accelerator
@@ -65,6 +65,7 @@ def compute_masks(rank, config, world_size, use_lora, use_ema):
         ema_unet.copy_to(pipeline.unet.parameters())
     else:
         pipeline.unet = UNet2DConditionModel.from_pretrained(config.checkpoint)
+        init_attn_save(pipeline)
 
 
     pipeline.unet.requires_grad_(False)
@@ -212,6 +213,8 @@ def compute_iou_score(config, use_lora, use_ema):
         ema_unet.copy_to(pipeline.unet.parameters())
     else:
         pipeline.unet = UNet2DConditionModel.from_pretrained(config.checkpoint)
+        init_attn_save(pipeline)
+
 
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
