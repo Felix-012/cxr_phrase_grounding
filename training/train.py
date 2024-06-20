@@ -327,6 +327,10 @@ def main():
         disable=not accelerator.is_local_main_process,
     )
 
+    empty_token_id = tokenizer(
+        "", max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
+    ).input_ids.to("cuda")
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
@@ -350,6 +354,9 @@ def main():
                         raise KeyError("No impression saved")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
+                for i in range(len(batch["input_ids"])):
+                    if bool(torch.rand(1) < args.ucg_probability):
+                        batch["input_ids"][i] = empty_token_id
                 # Convert images to latent space
                 latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(unet.device)
                 latents = latents * vae.config.scaling_factor

@@ -206,7 +206,15 @@ def get_parser_arguments_train(parser):
     )
 
     parser.add_argument(
-        "--validation_prompt", type=str, default=None, help="A prompt that is sampled during training for inference."
+        "--validation_prompt",
+        type=str,
+        default=None,
+        nargs="+",
+        help=(
+            "A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."
+            " Provide either a matching number of `--validation_image`s, a single `--validation_image`"
+            " to be used with all prompts, or a single prompt that will be used with all `--validation_image`s."
+        ),
     )
 
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
@@ -297,5 +305,28 @@ def get_parser_arguments_train(parser):
     parser.add_argument("--use_custom", action="store_true", help="Whether to use a custom model.")
     parser.add_argument("--llm_name", type=str, default=None, choices=["radbert", "chexagent", "med-kebert"],
                         help="Name of the custom text encoder to use.")
+
+    parser.add_argument(
+        "--controlnet_model_name_or_path",
+        type=str,
+        default=None,
+        help="Path to pretrained controlnet model or model identifier from huggingface.co/models."
+             " If not specified controlnet weights are initialized from unet.",
+    )
+
+    parser.add_argument(
+        "--validation_image",
+        type=str,
+        default=None,
+        nargs="+",
+        help=(
+            "A set of paths to the controlnet conditioning image be evaluated every `--validation_steps`"
+            " and logged to `--report_to`. Provide either a matching number of `--validation_prompt`s, a"
+            " a single `--validation_prompt` to be used with all `--validation_image`s, or a single"
+            " `--validation_image` that will be used with all `--validation_prompt`s."
+        ),
+    )
+
+    parser.add_argument("--ucg_probability", type=float, default=0.0, help="unconditional guidance probability")
 
     return parser
