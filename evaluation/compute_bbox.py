@@ -40,7 +40,7 @@ from log import logger
 from accelerate import Accelerator
 
 
-def compute_masks(rank, config, world_size, use_lora):
+def compute_masks(rank, config, world_size, use_lora, use_ema):
     logger.info(f"Current rank: {rank}")
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
@@ -55,7 +55,7 @@ def compute_masks(rank, config, world_size, use_lora):
 
     if use_lora:
         pipeline.load_lora_weights(lora_weights)
-    else:
+    elif use_ema:
         ema_unet = EMAModel(pipeline.unet.parameters(), model_cls=UNet2DConditionModel,
                             model_config=pipeline.unet.config)
         ema_unet.to("cuda")
@@ -63,6 +63,9 @@ def compute_masks(rank, config, world_size, use_lora):
         ema_unet.load_state_dict(load_model.state_dict())
         del load_model
         ema_unet.copy_to(pipeline.unet.parameters())
+    else:
+        pipeline.unet = UNet2DConditionModel.from_pretrained(config.checkpoint)
+
 
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
@@ -90,8 +93,7 @@ def compute_masks(rank, config, world_size, use_lora):
                             shuffle=False,
                             num_workers=0,  #opt.num_workers,
                             collate_fn=collate_batch,
-                            drop_last=False,
-                            sampler=data_sampler
+                            drop_last=False
                             )
 
     if hasattr(config, "mask_dir"):
@@ -114,6 +116,7 @@ def compute_masks(rank, config, world_size, use_lora):
                 all_attn_maps.clear()
                 all_neg_attn_maps.clear()
                 images = pipeline(prompt=samples["impression"], num_inference_steps=50, guidance_scale=4.0, mask_image=mask, image=latents).images
+                vis(images[0])
                 attention_images = preprocess_attention_maps(all_attn_maps, on_cpu=True)
                 attention_images_neg = preprocess_attention_maps(all_neg_attn_maps, on_cpu=True)
                 #attention_images = (attention_images + attention_images_neg) / 2
@@ -147,7 +150,7 @@ def compute_masks(rank, config, world_size, use_lora):
                     locations = word_to_slice(txt_label.split(" "), query_words)
                     if len(locations) == 0:
                         # use all
-                        tok_attention = attention[6:7,-40:,token_positions[0]:token_positions[-1]]
+                        tok_attention = attention[:, -40:,token_positions[0]:token_positions[-1]]
                         tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
                         # plt.imsave(f"attn_map_all_{j}.jpg", tok_attention.mean(dim=(0, 1, 2)))
                         # plt.imsave(f"attn_map_all_up_{j}.jpg",
@@ -164,7 +167,7 @@ def compute_masks(rank, config, world_size, use_lora):
 
                         #i = 0
                         for location in locations:
-                            tok_attention = attention[6:7,-40:,token_positions[location]:token_positions[location+1]]
+                            tok_attention = attention[:,-40:,token_positions[location]:token_positions[location+1]]
                             tok_attentions.append(tok_attention.mean(dim=(0,1,2)))
                             # plt.imsave(f"attn_map_{query_words[i]}.jpg", tok_attention.mean(dim=(0,1,2)))
                             # plt.imsave(f"attn_map_up_{query_words[i]}.jpg", attention[:8,:,token_positions[location]:token_positions[location+1]].mean(dim=(0, 1, 2)))
@@ -183,7 +186,7 @@ def compute_masks(rank, config, world_size, use_lora):
                     torch.save(preliminary_attention_mask.to("cpu"), path)
 
 
-def compute_iou_score(config, use_lora):
+def compute_iou_score(config, use_lora, use_ema):
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
     else:
@@ -199,7 +202,7 @@ def compute_iou_score(config, use_lora):
     pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name, inpaint=True).pipe
     if use_lora:
         pipeline.load_lora_weights(lora_weights)
-    else:
+    elif use_ema:
         ema_unet = EMAModel(pipeline.unet.parameters(), model_cls=UNet2DConditionModel,
                             model_config=pipeline.unet.config)
         ema_unet.to("cuda")
@@ -207,6 +210,9 @@ def compute_iou_score(config, use_lora):
         ema_unet.load_state_dict(load_model.state_dict())
         del load_model
         ema_unet.copy_to(pipeline.unet.parameters())
+    else:
+        pipeline.unet = UNet2DConditionModel.from_pretrained(config.checkpoint)
+
     pipeline.unet.requires_grad_(False)
     pipeline.vae.requires_grad_(False)
     pipeline.text_encoder.requires_grad_(False)
@@ -346,6 +352,8 @@ def get_args():
                         help="If set, then we use shortened impressions from mscxr")
     parser.add_argument("--use_lora", action="store_true", default=False,
                         help="If set, then lora weights are used")
+    parser.add_argument("--use_ema", action="store_true", default=False,
+                        help="If set, then lora weights are used")
     parser.add_argument("--llm_name", type=str, default="", choices=["chexagent", "radbert", "clip"],
                         help="Name of the llm to use")
     parser.add_argument("--path", type=str, default="", help="Path to the repository or local folder of the pipeline")
@@ -362,5 +370,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    compute_masks(2, config, world_size, args.use_lora)
-    compute_iou_score(config, args.use_lora)
+    compute_masks(2, config, world_size, args.use_lora, args.use_ema)
+    compute_iou_score(config, args.use_lora ,args.use_ema)
