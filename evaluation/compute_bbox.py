@@ -332,7 +332,28 @@ def compute_iou_score(config, use_lora, use_ema):
     df = pd.DataFrame(results)
     logger.info(f"Saving file with results to { mask_dir}")
     df.to_csv(os.path.join(mask_dir, f"pgm_{config.phrase_grounding_mode}_bbox_results.csv"))
-    mean_results = df.groupby("finding_labels").mean(numeric_only=True)
+    if 'frequency' not in df.columns:
+        df['frequency'] = df.groupby('finding_labels')['finding_labels'].transform('count')
+        df['frequency'] = df['frequency'].astype(int)
+
+    # Compute the weighted average for each numeric column except 'frequency'
+    weighted_averages = {}
+    numeric_columns = [col for col in df.columns if df[col].dtype.kind in 'bifc' and col != 'frequency']
+
+    for column in numeric_columns:
+        weighted_sum = (df[column] * df['frequency']).sum()
+        total_weight = df['frequency'].sum()
+        weighted_averages[column] = weighted_sum / total_weight
+
+    # Convert weighted averages to a DataFrame
+    weighted_avg_df = pd.DataFrame(weighted_averages, index=[0])
+
+    # Add total frequency as a simple sum, not as a weighted average
+    weighted_avg_df['frequency'] = df['frequency'].count()
+
+    # Concatenate mean_results with weighted_avg_df
+    mean_results = df.groupby('finding_labels').mean(numeric_only=True)
+    mean_results = pd.concat([mean_results, weighted_avg_df.rename(index={0: 'Weighted_Average'})])
     mean_results.to_csv(os.path.join(mask_dir,  f"pgm_{config.phrase_grounding_mode}_bbox_results_means.csv"))
     logger.info(df.groupby("finding_labels").mean(numeric_only=True))
 
@@ -373,5 +394,5 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
-    compute_masks(2, config, world_size, args.use_lora, args.use_ema)
+    #compute_masks(2, config, world_size, args.use_lora, args.use_ema)
     compute_iou_score(config, args.use_lora ,args.use_ema)
