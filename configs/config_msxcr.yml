@@ -10,7 +10,9 @@ log_dir: /vol/ideadata/ce90tate/cxr_phrase_grounding/log
 lora_weights: /vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/lora/clip/checkpoint-30000
 num_workers: 0
 num_chunks: 1
-checkpoint: /vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/clip/checkpoint-30000
+checkpoint: /vol/ideadata/ce90tate/cxr_phrase_grounding/finetune/normal/clip/checkpoint-15000
+control_cond_path:
+control_preprocessing_type: canny
 
 dataloading:
   batch_size: 8
