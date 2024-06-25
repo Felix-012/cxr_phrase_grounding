@@ -5,10 +5,10 @@ import json
 import random
 from pathlib import Path
 from collections import defaultdict
-
 import cv2
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 from torch.utils.data import Dataset
 from datasets.utils import path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
@@ -249,12 +249,7 @@ class MimicCXRDataset(FOBADataset):
             control = cv2.cvtColor(control.numpy().squeeze().transpose(1, 2, 0), cv2.COLOR_BGR2GRAY)
             control = np.round((control + 1) * 255 / 2).astype(np.uint8)
         control = cv2.medianBlur(control, 5)
-        th3 = cv2.adaptiveThreshold(control, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                    cv2.THRESH_BINARY, 11, 2)
-
-        ret2, th4 = cv2.threshold(control, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-        control = cv2.Canny(th3, ret2, ret2 * 0.9)
+        control = cv2.Canny(control, np.median(control) * 0.4, np.median(control) * 0.3)
         control = control[:, :, None]
         control = np.concatenate([control, control, control], axis=2)
 

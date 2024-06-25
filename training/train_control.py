@@ -8,8 +8,8 @@ import math
 import os
 import shutil
 from pathlib import Path
-
 import accelerate
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -18,6 +18,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+from einops import einops
 from torch.utils.data import DataLoader
 
 from custom_pipe import FrozenCustomPipe
@@ -387,6 +388,7 @@ def main(args):
                 train_dataset[i]["control"] = train_dataset.preprocess_control(control,
                                                                                config.get("control_preprocessing_type:",
                                                                                           "canny"))
+
 
         train_dataloader = DataLoader(
             train_dataset,

@@ -328,5 +328,7 @@ def get_parser_arguments_train(parser):
     )
 
     parser.add_argument("--ucg_probability", type=float, default=0.0, help="unconditional guidance probability")
+    parser.add_argument("--lr_num_cycles", type=float, default=1, help="Number of cycles to be performed by the "
+                                                                       "learning rate scheduler")
 
     return parser
