@@ -379,6 +379,12 @@ def main(args):
             accelerator.print("using whole dataset")
             train_dataset.load_precomputed(vae)
 
+        if not hasattr(train_dataset.data[0], "control"):
+            train_dataset.data = train_dataset.load_control_conditioning(train_dataset.data,
+                                                                         config.get("control_cond_path"), None,
+                                                                         config.get("control_preprocessing_type:", "canny"))
+
+
         train_dataloader = DataLoader(
             train_dataset,
             shuffle=True,

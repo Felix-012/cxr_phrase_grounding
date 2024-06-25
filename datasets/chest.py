@@ -155,7 +155,7 @@ class MimicCXRDataset(FOBADataset):
                 control_preprocessing_type = self.opt.control_preprocessing_type
             else:
                 control_preprocessing_type = None
-            entries = self._load_control_conditioning(entries, self.opt.control_cond_path, control_preprocessing_type)
+            entries = self.load_control_conditioning(entries, self.opt.control_cond_path, control_preprocessing_type)
 
         # save entries
         entry_keys = list(entries.keys())
@@ -234,7 +234,7 @@ class MimicCXRDataset(FOBADataset):
         entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
 
-    def _load_control_conditioning(self, entries, control_cond_path, control_preprocessing_type):
+    def load_control_conditioning(self, entries, control_cond_path, control_preprocessing_type):
         for i in tqdm(range(len(entries)), "Processing control conditioning"):
             control = self._load_image(control_cond_path)
             if control_preprocessing_type:
