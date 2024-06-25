@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 import os
 import torch
 import numpy as np
+
 from datasets.utils import file_to_list
 from einops import repeat
 from util_scripts.utils_generic import DatasetSplit, SPLIT_TO_DATASETSPLIT, DATASETSPLIT_TO_SPLIT
@@ -95,6 +96,8 @@ class FOBADataset(Dataset):
                 if SPLIT_TO_DATASETSPLIT[int(split)].value == self.split:
                     split_data.append(dataobj)
         self.data = split_data
+
+
 
     def _load_images(self, index):
         assert len(index) == 1

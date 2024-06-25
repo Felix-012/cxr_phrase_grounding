@@ -1,7 +1,7 @@
 #!/bin/bash
 accelerate launch /vol/ideadata/ce90tate/cxr_phrase_grounding/training/train.py \
 --pretrained_model_name_or_path=runwayml/stable-diffusion-v1-5 \
---controlnet_model_name_or_path=/vol/ideadata/ce90tate/cxr_phrase_grounding/components/controlnet/
+--controlnet_model_name_or_path=/vol/ideadata/ce90tate/cxr_phrase_grounding/components/controlnet/ \
 --gradient_accumulation_steps=1 \
 --max_train_steps=15001 \
 --learning_rate=5e-05 \

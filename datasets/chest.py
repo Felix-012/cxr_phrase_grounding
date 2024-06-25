@@ -1,9 +1,14 @@
 """addapted from https://github.com/MischaD/chest-distillation"""
 
 import hashlib
+import json
 import random
+from pathlib import Path
+from collections import defaultdict
+
 import numpy as np
 import pandas as pd
+from torch.utils.data import Dataset
 from datasets.utils import path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
 from datasets.dataset import FOBADataset
@@ -12,6 +17,8 @@ from util_scripts.utils_generic import DatasetSplit
 import torch
 import os, pickle
 from tqdm import tqdm
+from spacy.tokens import DocBin
+import spacy
 
 
 class MimicCXRDataset(FOBADataset):
@@ -116,9 +123,10 @@ class MimicCXRDataset(FOBADataset):
         entries = {}
         if self._save_original_images:
             entries["img_raw"] = []
+        if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is not None:
+            entries["control"] = []
         j = 0
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
-            print("start precomputing")
             try:
                 entry = self._load_images([j])
             except FileExistsError:
@@ -135,10 +143,14 @@ class MimicCXRDataset(FOBADataset):
             z = self.compute_latent(entry["img"], model)
             if self._save_original_images:
                 entries["img_raw"].append(entry["img"])
-                entries["img"][j] = z
-            else:
-                entries["img"][j] = z
+            entries["img"][j] = z
             j +=1
+        if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is not None:
+            if hasattr(self.opt, "control_preprocessing_type"):
+                control_preprocessing_type = self.opt.control_preprocessing_type
+            else:
+                control_preprocessing_type = None
+            entries = self._load_control_conditioning(entries, self.opt.control_cond_path, control_preprocessing_type)
 
         # save entries
         entry_keys = list(entries.keys())
@@ -217,6 +229,19 @@ class MimicCXRDataset(FOBADataset):
         entry["img"] = self._load_image(img_path)
         entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
+
+    def _load_control_conditioning(self, entries, control_cond_path, control_preprocessing_type):
+        for i in tqdm(range(len(entries)), "Processing control conditioning"):
+            control = self._load_image(control_cond_path)
+            if control_preprocessing_type:
+                control = self._preprocess_control(control)
+            entries[i]["control"] = control
+        return entries
+
+    def _preprocess_control(self, control):
+        pass
+
+
 
     def load_next_chunk(self):
         if self.chunk_load_counter >= len(self.chunk_indices):  # If all chunks have been loaded once
@@ -310,3 +335,91 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
         entry["label_text"] = meta_data_entry["label_text"]
         entry["category_name"] = meta_data_entry["category_name"]
         return entry
+
+class MIMIC_Dataset(Dataset):
+    def __init__(self, umls_json_path, radgraph_json_path, csv_path, sty_path, img_res, base_path):
+        self.p = Path(radgraph_json_path).stem
+        self.base_path = base_path
+        #spacy.prefer_gpu()
+        #nlp = spacy.load("en_core_sci_scibert")
+        #self.umls_info = DocBin()
+        #self.umls_info = self.umls_info.from_disk(umls_path)
+        #self.umls_info = list(self.umls_info.get_docs(vocab=nlp.vocab))
+        self.umls_info = json.load(open(umls_json_path, 'r'))
+        self.radgraph_json_info = json.load(open(radgraph_json_path, 'r'))
+
+
+
+
+        self.entity_label_dict = {
+            'ANAT-DP': 'Anatomy Definitely Present',
+            'OBS-DP': 'Observation Definitely Present',
+            'OBS-DA': 'Observation Definitely Absent',
+            'OBS-U': 'Observation Uncertain',
+        }
+
+        data_info = pd.read_csv(csv_path)
+        self.dcm_relative_paths = np.asarray(data_info.loc[data_info['p'] == self.p, 'path'])
+        self.class_list = np.asarray(list(data_info)[16:-2])
+        #sty_info = pd.read_csv(sty_path)
+        #self.sty_dict_info = self.csv_to_dict(sty_info)
+
+    def csv_to_dict(self, sty_info):
+        tui_list = sty_info.iloc[:, 0]
+        sty_list = sty_info.iloc[:, 1]
+        sty_dict = defaultdict(list)
+        for idx in tqdm(range(len(tui_list))):
+            tui_idx = tui_list[idx]
+            sty_idx = sty_list[idx]
+            sty_dict[tui_idx] = sty_idx
+        return sty_dict
+
+    def __len__(self):
+        return len(self.dcm_relative_paths)
+
+    def get_entity_list(self, entities):
+        entity_dict = defaultdict(list)
+        entities_num = len(entities)
+        for idx in range(entities_num):
+            entity_idx = entities[str(idx + 1)]
+            token_idx = entity_idx['tokens']
+            label_idx = self.entity_label_dict[entity_idx['label']]
+            entity_dict[token_idx] = label_idx
+        return entity_dict
+
+    def __getitem__(self, index):
+        class_label = self.class_list[index]
+        #entities = self.umls_json_info[index]['entities']
+        #captions = self.umls_json_info[index]['caption']
+        entities = self.umls_info[index]["entity_presence"]
+        if len(entities) != 0:
+            try:
+                radgraph_entities = self.radgraph_json_info[self.umls_info[index]['file_path']]['entities']
+                radgraph_entity_dict = self.get_entity_list(radgraph_entities)
+                entity_details = ''
+                for entity in entities:
+                    sub_entities = entity["entities"]
+                    sub_entity_details = ''
+                    for sub_entity in sub_entities:
+                        sub_entity_info = sub_entity["text"]
+                        if sub_entity_info in radgraph_entity_dict.keys():
+                            sub_entity_details += sub_entity_info + radgraph_entity_dict[sub_entity_info]
+                        else:
+                            sub_entity_details += sub_entity_info
+                    entity_details = entity_details + sub_entity_details + ' [SEP] '
+            except:
+                entity_details = ''
+                for entity in entities:
+                    sub_entities = entity["entities"]
+                    sub_entity_details = ''
+                    for sub_entity in sub_entities:
+                        sub_entity_details += sub_entity["text"]
+                    entity_details = entity_details + sub_entity_details + ' [SEP] '
+        else:
+            entity_details = ''
+            for sub_entity in entities:
+                entity_details = entity_details + sub_entity["sentence_text"] + ' [SEP] '
+
+        return {
+            "entity": entity_details
+        }
