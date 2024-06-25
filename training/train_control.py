@@ -555,7 +555,7 @@ def main(args):
                 encoder_hidden_states = \
                     text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
-                controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
+                controlnet_image = batch["control"].to(dtype=weight_dtype)
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,

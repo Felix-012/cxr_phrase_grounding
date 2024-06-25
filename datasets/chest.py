@@ -245,6 +245,8 @@ class MimicCXRDataset(FOBADataset):
     def preprocess_control(self, control, control_preprocessing_type):
         if control_preprocessing_type != "canny":
             raise NotImplementedError("Only canny preprocessing is implemented for control conditioning")
+        if torch.is_tensor(control):
+            control = cv2.cvtColor(control.numpy().transpose(1, 2, 0), cv2.COLOR_BGR2GRAY)
         control = cv2.medianBlur(control, 5)
         th3 = cv2.adaptiveThreshold(control, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                     cv2.THRESH_BINARY, 11, 2)
