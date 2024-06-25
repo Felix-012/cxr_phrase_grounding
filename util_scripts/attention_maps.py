@@ -10,8 +10,6 @@ from diffusers.models.attention_processor import (
     Attention,
     AttnProcessor,
     AttnProcessor2_0,
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0
 )
 
 logger = logging.get_logger(__name__)
@@ -401,62 +399,10 @@ def attn_call2_0(
     return hidden_states
 
 
-def lora_attn_call(self, attn: Attention, hidden_states, height, width, *args, **kwargs):
-    self_cls_name = self.__class__.__name__
-    deprecate(
-        self_cls_name,
-        "0.26.0",
-        (
-            f"Make sure use {self_cls_name[4:]} instead by setting"
-            "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-            " `LoraLoaderMixin.load_lora_weights`"
-        ),
-    )
-    attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
-    attn.to_k.lora_layer = self.to_k_lora.to(hidden_states.device)
-    attn.to_v.lora_layer = self.to_v_lora.to(hidden_states.device)
-    attn.to_out[0].lora_layer = self.to_out_lora.to(hidden_states.device)
-
-    attn._modules.pop("processor")
-    attn.processor = AttnProcessor()
-
-    if hasattr(self, "store_attn_map"):
-        attn.processor.store_attn_map = True
-
-    return attn.processor(attn, hidden_states, height, width, *args, **kwargs)
-
-
-def lora_attn_call2_0(self, attn: Attention, hidden_states, height, width, *args, **kwargs):
-    self_cls_name = self.__class__.__name__
-    deprecate(
-        self_cls_name,
-        "0.26.0",
-        (
-            f"Make sure use {self_cls_name[4:]} instead by setting"
-            "LoRA layers to `self.{to_q,to_k,to_v,to_out[0]}.lora_layer` respectively. This will be done automatically when using"
-            " `LoraLoaderMixin.load_lora_weights`"
-        ),
-    )
-    attn.to_q.lora_layer = self.to_q_lora.to(hidden_states.device)
-    attn.to_k.lora_layer = self.to_k_lora.to(hidden_states.device)
-    attn.to_v.lora_layer = self.to_v_lora.to(hidden_states.device)
-    attn.to_out[0].lora_layer = self.to_out_lora.to(hidden_states.device)
-
-    attn._modules.pop("processor")
-    attn.processor = AttnProcessor2_0()
-
-    if hasattr(self, "store_attn_map"):
-        attn.processor.store_attn_map = True
-
-    return attn.processor(attn, hidden_states, height, width, *args, **kwargs)
-
 def cross_attn_init():
     AttnProcessor.__call__ = attn_call
     AttnProcessor2_0.__call__ = attn_call # attn_call is faster
     # AttnProcessor2_0.__call__ = attn_call2_0
-    LoRAAttnProcessor.__call__ = lora_attn_call
-    # LoRAAttnProcessor2_0.__call__ = lora_attn_call2_0
-    LoRAAttnProcessor2_0.__call__ = lora_attn_call
 
 
 def hook_fn(name):
@@ -483,10 +429,6 @@ def register_cross_attention_hook(unet):
         if isinstance(module.processor, AttnProcessor):
             module.processor.store_attn_map = True
         elif isinstance(module.processor, AttnProcessor2_0):
-            module.processor.store_attn_map = True
-        elif isinstance(module.processor, LoRAAttnProcessor):
-            module.processor.store_attn_map = True
-        elif isinstance(module.processor, LoRAAttnProcessor2_0):
             module.processor.store_attn_map = True
 
         hook = module.register_forward_hook(hook_fn(name))
