@@ -6,6 +6,7 @@ import random
 from pathlib import Path
 from collections import defaultdict
 
+import cv2
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
@@ -19,6 +20,7 @@ import os, pickle
 from tqdm import tqdm
 from spacy.tokens import DocBin
 import spacy
+from PIL import Image
 
 
 class MimicCXRDataset(FOBADataset):
@@ -234,16 +236,31 @@ class MimicCXRDataset(FOBADataset):
         for i in tqdm(range(len(entries)), "Processing control conditioning"):
             control = self._load_image(control_cond_path)
             if control_preprocessing_type:
-                control = self._preprocess_control(control)
+                control = self._preprocess_control(control, control_preprocessing_type)
             entries[i]["control"] = control
         return entries
 
-    def _preprocess_control(self, control):
-        pass
+    def _preprocess_control(self, control, control_preprocessing_type):
+        if control_preprocessing_type != "canny":
+            raise NotImplementedError("Only canny preprocessing is implemented for control conditioning")
+        control = cv2.medianBlur(control, 5)
+        th3 = cv2.adaptiveThreshold(control, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                    cv2.THRESH_BINARY, 11, 2)
+
+        ret2, th4 = cv2.threshold(control, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        control = cv2.Canny(th3, ret2, ret2 * 0.9)
+        control = control[:, :, None]
+
+        control = np.concatenate([control, control, control], axis=2)
+
+        return Image.fromarray(control)
 
 
 
-    def load_next_chunk(self):
+
+
+def load_next_chunk(self):
         if self.chunk_load_counter >= len(self.chunk_indices):  # If all chunks have been loaded once
             random.shuffle(self.chunk_indices)  # Reshuffle the list
             self.chunk_load_counter = 0  # Reset the counter
