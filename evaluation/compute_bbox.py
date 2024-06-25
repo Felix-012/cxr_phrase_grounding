@@ -38,9 +38,10 @@ from custom_pipe import FrozenCustomPipe, init_attn_save
 from util_scripts.attention_maps import all_attn_maps, all_neg_attn_maps
 from log import logger
 from accelerate import Accelerator
+import torch.multiprocessing as mp
 
 
-def compute_masks(rank, config, world_size, use_lora, use_ema):
+def compute_masks(rank, config, world_size, args):
     logger.info(f"Current rank: {rank}")
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
@@ -53,9 +54,9 @@ def compute_masks(rank, config, world_size, use_lora, use_ema):
 
     pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name, inpaint=True).pipe
 
-    if use_lora:
+    if args.use_lora:
         pipeline.load_lora_weights(lora_weights)
-    elif use_ema:
+    elif args.use_ema and config.checkpoint is not None:
         ema_unet = EMAModel(pipeline.unet.parameters(), model_cls=UNet2DConditionModel,
                             model_config=pipeline.unet.config)
         ema_unet.to("cuda")
@@ -63,7 +64,7 @@ def compute_masks(rank, config, world_size, use_lora, use_ema):
         ema_unet.load_state_dict(load_model.state_dict())
         del load_model
         ema_unet.copy_to(pipeline.unet.parameters())
-    else:
+    elif config.checkpoint is not None:
         pipeline.unet = UNet2DConditionModel.from_pretrained(config.checkpoint)
         init_attn_save(pipeline)
 
@@ -94,7 +95,8 @@ def compute_masks(rank, config, world_size, use_lora, use_ema):
                             shuffle=False,
                             num_workers=0,  #opt.num_workers,
                             collate_fn=collate_batch,
-                            drop_last=False
+                            drop_last=False,
+                            sampler=data_sampler
                             )
 
     if hasattr(config, "mask_dir"):
@@ -187,7 +189,7 @@ def compute_masks(rank, config, world_size, use_lora, use_ema):
                     torch.save(preliminary_attention_mask.to("cpu"), path)
 
 
-def compute_iou_score(config, use_lora, use_ema):
+def compute_iou_score(config, args):
     if config.phrase_grounding_mode:
         config["phrase_grounding"] = True
     else:
@@ -201,9 +203,9 @@ def compute_iou_score(config, use_lora, use_ema):
             logger.warning("Filtering cannot be combined with phrase grounding")
         dataset.apply_filter_for_disease_in_txt()
     pipeline = FrozenCustomPipe(path=args.path, save_attention=True, llm_name=args.llm_name, inpaint=True).pipe
-    if use_lora:
+    if args.use_lora:
         pipeline.load_lora_weights(lora_weights)
-    elif use_ema:
+    elif args.use_ema and config.checkpoint is not None:
         ema_unet = EMAModel(pipeline.unet.parameters(), model_cls=UNet2DConditionModel,
                             model_config=pipeline.unet.config)
         ema_unet.to("cuda")
@@ -211,7 +213,7 @@ def compute_iou_score(config, use_lora, use_ema):
         ema_unet.load_state_dict(load_model.state_dict())
         del load_model
         ema_unet.copy_to(pipeline.unet.parameters())
-    else:
+    elif config.checkpoint is not None:
         pipeline.unet = UNet2DConditionModel.from_pretrained(config.checkpoint)
         init_attn_save(pipeline)
 
@@ -394,5 +396,10 @@ if __name__ == '__main__':
     args = get_args()
     config = load_config(args.config)
     world_size = torch.cuda.device_count()
+    mp.spawn(
+        compute_masks,
+        args=(config, world_size, args),
+        nprocs=world_size
+    )
     #compute_masks(2, config, world_size, args.use_lora, args.use_ema)
-    compute_iou_score(config, args.use_lora ,args.use_ema)
+    compute_iou_score(config, args)

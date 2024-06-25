@@ -244,7 +244,6 @@ def attn_call(
         encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
-        scale=1.0,
         height=None,
         width=None,
     ):
