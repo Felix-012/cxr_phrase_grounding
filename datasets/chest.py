@@ -147,7 +147,7 @@ class MimicCXRDataset(FOBADataset):
                 entries["img_raw"].append(entry["img"])
             if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is None:
                 if hasattr(self.opt, "control_preprocessing_type"):
-                    entries["control"].append(self._preprocess_control(entries["img"], self.opt.control_preprocessing_type))
+                    entries["control"].append(self.preprocess_control(entries["img"], self.opt.control_preprocessing_type))
             entries["img"][j] = z
             j += 1
         if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is not None:
@@ -217,7 +217,7 @@ class MimicCXRDataset(FOBADataset):
         if self.limit_dataset is not None:
             self.data = self.data[self.limit_dataset[0]:min(self.limit_dataset[1], len(self.data))]
 
-    def _load_image(self, img_path):
+    def load_image(self, img_path):
         img = path_to_tensor(img_path)
         # images too large are resized to self.W^2 using center cropping
         if max(img.size()) > self.W:
@@ -230,19 +230,19 @@ class MimicCXRDataset(FOBADataset):
         entry = self.data[index[0]].copy()
         entry["dicom_id"] = os.path.basename(entry["rel_path"]).rstrip(".jpg")
         img_path = os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg"))
-        entry["img"] = self._load_image(img_path)
+        entry["img"] = self.load_image(img_path)
         entry["impression"] = self.meta_data.loc[entry["dicom_id"]]["impression"]
         return entry
 
     def load_control_conditioning(self, entries, control_cond_path, control_preprocessing_type):
         for i in tqdm(range(len(entries)), "Processing control conditioning"):
-            control = self._load_image(control_cond_path)
+            control = self.load_image(control_cond_path)
             if control_preprocessing_type:
-                control = self._preprocess_control(control, control_preprocessing_type)
+                control = self.preprocess_control(control, control_preprocessing_type)
             entries[i]["control"] = control
         return entries
 
-    def _preprocess_control(self, control, control_preprocessing_type):
+    def preprocess_control(self, control, control_preprocessing_type):
         if control_preprocessing_type != "canny":
             raise NotImplementedError("Only canny preprocessing is implemented for control conditioning")
         control = cv2.medianBlur(control, 5)
@@ -327,7 +327,7 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
     def _load_images(self, index):
         assert len(index)
         entry = self.data[index[0]].copy()
-        entry["img"] = self._load_image(os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg")))
+        entry["img"] = self.load_image(os.path.join(self.base_dir, entry["rel_path"].replace(".dcm", ".jpg")))
 
         meta_data_entry = self.bbox_meta_data.loc[entry["dicom_id"]]
         if isinstance(meta_data_entry, pd.DataFrame):

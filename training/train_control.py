@@ -1,6 +1,5 @@
 """adapted from https://github.com/huggingface/diffusers/tree/main/examples/text_to_image"""
 
-
 import argparse
 import contextlib
 import gc
@@ -28,6 +27,7 @@ from packaging import version
 from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
+from tqdm import tqdm as tqdm_def
 from transformers import AutoTokenizer, PretrainedConfig, CLIPTokenizer, CLIPTextModel
 
 import diffusers
@@ -380,10 +380,13 @@ def main(args):
             train_dataset.load_precomputed(vae)
 
         if not hasattr(train_dataset.data[0], "control"):
-            train_dataset.data = train_dataset.load_control_conditioning(train_dataset.data,
-                                                                         config.get("control_cond_path"), None,
-                                                                         config.get("control_preprocessing_type:", "canny"))
-
+            for i in tqdm_def(range(len(train_dataset)), desc="Processing control conditioning"):
+                control = train_dataset.load_image(os.path.join(train_dataset.base_dir,
+                                                                train_dataset[i]["rel_path"]
+                                                                .replace(".dcm", ".jpg")))
+                train_dataset[i]["control"] = train_dataset.preprocess_control(control,
+                                                                               config.get("control_preprocessing_type:",
+                                                                                          "canny"))
 
         train_dataloader = DataLoader(
             train_dataset,
@@ -550,7 +553,7 @@ def main(args):
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = \
-                text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
+                    text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
 
