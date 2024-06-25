@@ -260,10 +260,13 @@ def main(args):
                 args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
             )
 
+    controlnet = None
     if args.controlnet_model_name_or_path:
-        logger.info("Loading existing controlnet weights")
-        controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
-    else:
+        with os.scandir(args.controlnet_model_name_or_path) as it:
+            if any(it):
+                logger.info("Loading existing controlnet weights")
+                controlnet = ControlNetModel.from_pretrained(args.controlnet_model_name_or_path)
+    if controlnet is None:
         logger.info("Initializing controlnet weights from unet")
         controlnet = ControlNetModel.from_unet(unet)
 
