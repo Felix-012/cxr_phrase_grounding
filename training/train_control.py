@@ -59,9 +59,8 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 from datasets.utils import load_config
-from training.train import parse_args
 from util_scripts.utils_generic import collate_batch
-from util_scripts.utils_train import tokenize_captions
+from util_scripts.utils_train import tokenize_captions, get_parser_arguments_train
 
 if is_wandb_available():
     import wandb
@@ -70,6 +69,16 @@ if is_wandb_available():
 check_min_version("0.30.0.dev0")
 
 logger = get_logger(__name__)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser = get_parser_arguments_train(parser)
+    args = parser.parse_args()
+    env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
+    if env_local_rank != -1 and env_local_rank != args.local_rank:
+        args.local_rank = env_local_rank
+    return args
 
 
 def image_grid(imgs, rows, cols):
@@ -547,7 +556,8 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
+                encoder_hidden_states = \
+                text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
 

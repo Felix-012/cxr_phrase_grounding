@@ -121,7 +121,7 @@ class MimicCXRDataset(FOBADataset):
         return img.to(old_device)
 
     def precompute(self, model):
-        #load entries
+        # load entries
         entries = {}
         if self._save_original_images:
             entries["img_raw"] = []
@@ -145,8 +145,11 @@ class MimicCXRDataset(FOBADataset):
             z = self.compute_latent(entry["img"], model)
             if self._save_original_images:
                 entries["img_raw"].append(entry["img"])
+            if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is None:
+                if hasattr(self.opt, "control_preprocessing_type"):
+                    entries["control"].append(self._preprocess_control(entries["img"], self.opt.control_preprocessing_type))
             entries["img"][j] = z
-            j +=1
+            j += 1
         if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is not None:
             if hasattr(self.opt, "control_preprocessing_type"):
                 control_preprocessing_type = self.opt.control_preprocessing_type
@@ -167,7 +170,6 @@ class MimicCXRDataset(FOBADataset):
         pickle.dump(entries, open(os.path.join(path, "entries.pkl"), "wb"))
         for key in data_tensors.keys():
             torch.save(data_tensors[key], os.path.join(path, f"{key}.pt"))
-
 
     @property
     def meta_data_path(self):
@@ -256,10 +258,6 @@ class MimicCXRDataset(FOBADataset):
 
         return Image.fromarray(control)
 
-
-
-
-
     def load_next_chunk(self):
         if self.chunk_load_counter >= len(self.chunk_indices):  # If all chunks have been loaded once
             random.shuffle(self.chunk_indices)  # Reshuffle the list
@@ -296,7 +294,10 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
         return pd.read_csv(os.path.join(self.base_dir, self._csv_name), index_col="dicom_id")
 
     def _build_dataset(self):
-        data = [dict(dicom_id=dicom_id, rel_path=os.path.join(img_path.replace(".dcm", ".jpg")), finding_labels=labels) for img_path, labels, dicom_id in zip(list(self.bbox_meta_data.paths), list(self.bbox_meta_data["category_name"]), self.bbox_meta_data.index)]
+        data = [dict(dicom_id=dicom_id, rel_path=os.path.join(img_path.replace(".dcm", ".jpg")), finding_labels=labels)
+                for img_path, labels, dicom_id in
+                zip(list(self.bbox_meta_data.paths), list(self.bbox_meta_data["category_name"]),
+                    self.bbox_meta_data.index)]
         self.data = data
         if self.shuffle:
             np.random.shuffle(np.array(self.data))
@@ -317,7 +318,8 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
             if entry["finding_labels"].lower() in meta_data_entry["label_text"].lower():
                 data.append(entry)
             else:
-                logger.info(f"Dropping the following for {meta_data_entry['category_name']}: {meta_data_entry['label_text']}")
+                logger.info(
+                    f"Dropping the following for {meta_data_entry['category_name']}: {meta_data_entry['label_text']}")
         old_len = len(self.data)
         self.data = data
         logger.info(f"Reduced dataset from {old_len} to {len(self.data)} due to filtering of diseases in txt")
@@ -353,20 +355,18 @@ class MimicCXRDatasetMSBBOX(MimicCXRDataset):
         entry["category_name"] = meta_data_entry["category_name"]
         return entry
 
+
 class MIMIC_Dataset(Dataset):
     def __init__(self, umls_json_path, radgraph_json_path, csv_path, sty_path, img_res, base_path):
         self.p = Path(radgraph_json_path).stem
         self.base_path = base_path
-        #spacy.prefer_gpu()
-        #nlp = spacy.load("en_core_sci_scibert")
-        #self.umls_info = DocBin()
-        #self.umls_info = self.umls_info.from_disk(umls_path)
-        #self.umls_info = list(self.umls_info.get_docs(vocab=nlp.vocab))
+        # spacy.prefer_gpu()
+        # nlp = spacy.load("en_core_sci_scibert")
+        # self.umls_info = DocBin()
+        # self.umls_info = self.umls_info.from_disk(umls_path)
+        # self.umls_info = list(self.umls_info.get_docs(vocab=nlp.vocab))
         self.umls_info = json.load(open(umls_json_path, 'r'))
         self.radgraph_json_info = json.load(open(radgraph_json_path, 'r'))
-
-
-
 
         self.entity_label_dict = {
             'ANAT-DP': 'Anatomy Definitely Present',
@@ -378,8 +378,8 @@ class MIMIC_Dataset(Dataset):
         data_info = pd.read_csv(csv_path)
         self.dcm_relative_paths = np.asarray(data_info.loc[data_info['p'] == self.p, 'path'])
         self.class_list = np.asarray(list(data_info)[16:-2])
-        #sty_info = pd.read_csv(sty_path)
-        #self.sty_dict_info = self.csv_to_dict(sty_info)
+        # sty_info = pd.read_csv(sty_path)
+        # self.sty_dict_info = self.csv_to_dict(sty_info)
 
     def csv_to_dict(self, sty_info):
         tui_list = sty_info.iloc[:, 0]
@@ -406,8 +406,8 @@ class MIMIC_Dataset(Dataset):
 
     def __getitem__(self, index):
         class_label = self.class_list[index]
-        #entities = self.umls_json_info[index]['entities']
-        #captions = self.umls_json_info[index]['caption']
+        # entities = self.umls_json_info[index]['entities']
+        # captions = self.umls_json_info[index]['caption']
         entities = self.umls_info[index]["entity_presence"]
         if len(entities) != 0:
             try:
