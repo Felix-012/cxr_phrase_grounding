@@ -260,7 +260,7 @@ class MimicCXRDataset(FOBADataset):
 
 
 
-def load_next_chunk(self):
+    def load_next_chunk(self):
         if self.chunk_load_counter >= len(self.chunk_indices):  # If all chunks have been loaded once
             random.shuffle(self.chunk_indices)  # Reshuffle the list
             self.chunk_load_counter = 0  # Reset the counter
