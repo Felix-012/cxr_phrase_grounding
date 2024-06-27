@@ -557,13 +557,15 @@ def main(args):
                 encoder_hidden_states = \
                     text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
-                controlnet_image = batch["control"].to(dtype=weight_dtype)
+                controlnet_images = [transforms.functional.pil_to_tensor(control) for control in batch["control"]]
+                controlnet_images = torch.stack(controlnet_images, dim=0).to(dtype=weight_dtype, device=unet.device)
+
 
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,
                     encoder_hidden_states=encoder_hidden_states,
-                    controlnet_cond=controlnet_image,
+                    controlnet_cond=controlnet_images,
                     return_dict=False,
                 )
 

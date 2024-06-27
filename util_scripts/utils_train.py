@@ -2,7 +2,35 @@ import os
 from random import choice
 import numpy as np
 from diffusers.utils.torch_utils import is_compiled_module
+import torch
 
+def normalize_and_scale_tensor(tensor):
+    """
+    Normalize and scale a float16 tensor to the range 0-255.
+
+    Parameters:
+    tensor (torch.Tensor): A float16 tensor with arbitrary scale.
+
+    Returns:
+    torch.Tensor: A uint8 tensor scaled to 0-255.
+    """
+    # Ensure the input tensor is float16 for consistent processing
+    tensor = tensor.type(torch.float16)
+
+    # Find the minimum and maximum values
+    min_val = tensor.min()
+    max_val = tensor.max()
+
+    # Normalize the tensor to the range 0-1
+    normalized_tensor = (tensor - min_val) / (max_val - min_val)
+
+    # Scale to the range 0-255
+    scaled_tensor = normalized_tensor * 255
+
+    # Convert to uint8
+    output_tensor = scaled_tensor.to(torch.uint8)
+
+    return output_tensor
 
 def get_latest_directory(args):
     if args.resume_from_checkpoint != "latest":
@@ -328,7 +356,9 @@ def get_parser_arguments_train(parser):
     )
 
     parser.add_argument("--ucg_probability", type=float, default=0.0, help="unconditional guidance probability")
-    parser.add_argument("--lr_num_cycles", type=float, default=1, help="Number of cycles to be performed by the "
+    parser.add_argument("--lr_num_cycles", type=int, default=1, help="Number of cycles to be performed by the "
                                                                        "learning rate scheduler")
+    parser.add_argument("--lr_power", type=float, default=1.0)
+    parser.add_argument("--tracker_project_name", type=str, default="text2img-finetune")
 
     return parser
