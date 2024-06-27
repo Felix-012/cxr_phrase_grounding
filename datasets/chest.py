@@ -125,7 +125,7 @@ class MimicCXRDataset(FOBADataset):
         entries = {}
         if self._save_original_images:
             entries["img_raw"] = []
-        if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is not None:
+        if hasattr(self.opt, "control_cond_path"):
             entries["control"] = []
         j = 0
         for i in tqdm(range(len(self)), "Precomputing Dataset"):
@@ -147,7 +147,7 @@ class MimicCXRDataset(FOBADataset):
                 entries["img_raw"].append(entry["img"])
             if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is None:
                 if hasattr(self.opt, "control_preprocessing_type"):
-                    entries["control"].append(self.preprocess_control(entries["img"], self.opt.control_preprocessing_type))
+                    entries["control"].append(self.preprocess_control(entries["img"][j], self.opt.control_preprocessing_type))
             entries["img"][j] = z
             j += 1
         if hasattr(self.opt, "control_cond_path") and self.opt.control_cond_path is not None:
@@ -155,7 +155,8 @@ class MimicCXRDataset(FOBADataset):
                 control_preprocessing_type = self.opt.control_preprocessing_type
             else:
                 control_preprocessing_type = None
-            entries = self.load_control_conditioning(entries, self.opt.control_cond_path, control_preprocessing_type)
+            if not entries["control"]:
+                entries = self.load_control_conditioning(entries, self.opt.control_cond_path, control_preprocessing_type)
 
         # save entries
         entry_keys = list(entries.keys())
@@ -185,6 +186,9 @@ class MimicCXRDataset(FOBADataset):
             return self._meta_data
 
     def _build_dataset(self):
+        path = "path"
+        if "rel_path" in self.meta_data:
+            path = "rel_path"
         try:
             filtered_meta_data = self.meta_data.dropna(subset=['path', 'Finding Labels'])
             paths = filtered_meta_data['path'].to_list()
@@ -197,8 +201,8 @@ class MimicCXRDataset(FOBADataset):
                 for img_path, label in zip(paths, labels)
             ]
         except KeyError:
-            filtered_meta_data = self.meta_data.dropna(subset=['path'])
-            paths = filtered_meta_data['path'].to_list()
+            filtered_meta_data = self.meta_data.dropna(subset=[path])
+            paths = filtered_meta_data[path].to_list()
             data = [
                 dict(
                     rel_path=os.path.join(img_path.replace(".dcm", ".jpg")),
