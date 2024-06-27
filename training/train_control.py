@@ -375,7 +375,7 @@ def main(args):
             accelerator.print("using whole dataset")
             train_dataset.load_precomputed(vae)
 
-        if not hasattr(train_dataset.data[0], "control"):
+        if not train_dataset[0].get("control", None):
             for i in tqdm_def(range(len(train_dataset)), desc="Processing control conditioning"):
                 control = train_dataset.load_image(os.path.join(train_dataset.base_dir,
                                                                 train_dataset[i]["rel_path"]
@@ -591,7 +591,7 @@ def main(args):
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
-                optimizer.zero_grad(set_to_none=args.set_grads_to_none)
+                optimizer.zero_grad()
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
@@ -624,7 +624,7 @@ def main(args):
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-                    if args.validation_prompt is not None and global_step % args.validation_steps == 0:
+                    if args.validation_prompt is not None and global_step % args.validation_epochs == 0:
                         image_logs = log_validation(
                             vae,
                             text_encoder,

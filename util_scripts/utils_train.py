@@ -239,7 +239,7 @@ def get_parser_arguments_train(parser):
         default=None,
         nargs="+",
         help=(
-            "A set of prompts evaluated every `--validation_steps` and logged to `--report_to`."
+            "A set of prompts evaluated every `--validation_epochs` and logged to `--report_to`."
             " Provide either a matching number of `--validation_image`s, a single `--validation_image`"
             " to be used with all prompts, or a single prompt that will be used with all `--validation_image`s."
         ),
