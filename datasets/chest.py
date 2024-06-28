@@ -8,7 +8,6 @@ from collections import defaultdict
 import cv2
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
 from torch.utils.data import Dataset
 from datasets.utils import path_to_tensor
 from torchvision.transforms import Resize, CenterCrop, Compose
@@ -18,8 +17,6 @@ from util_scripts.utils_generic import DatasetSplit
 import torch
 import os, pickle
 from tqdm import tqdm
-from spacy.tokens import DocBin
-import spacy
 from PIL import Image
 
 
@@ -366,8 +363,9 @@ class MIMIC_Dataset(Dataset):
         # self.umls_info = DocBin()
         # self.umls_info = self.umls_info.from_disk(umls_path)
         # self.umls_info = list(self.umls_info.get_docs(vocab=nlp.vocab))
-        self.umls_info = json.load(open(umls_json_path, 'r'))
+
         self.radgraph_json_info = json.load(open(radgraph_json_path, 'r'))
+        self.umls_info = json.load(open(umls_json_path, 'r'))
 
         self.entity_label_dict = {
             'ANAT-DP': 'Anatomy Definitely Present',

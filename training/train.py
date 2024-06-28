@@ -21,7 +21,7 @@ import torch.utils.checkpoint
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from diffusers import UNet2DConditionModel, EMAModel, DDPMScheduler, AutoencoderKL, DDIMScheduler
+from diffusers import UNet2DConditionModel, EMAModel, AutoencoderKL, DDIMScheduler
 from packaging import version
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
