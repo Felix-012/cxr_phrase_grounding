@@ -18,6 +18,7 @@ import torch
 import os, pickle
 from tqdm import tqdm
 from PIL import Image
+import re
 
 
 class MimicCXRDataset(FOBADataset):
@@ -376,19 +377,7 @@ class MIMIC_Dataset(Dataset):
 
         data_info = pd.read_csv(csv_path)
         self.dcm_relative_paths = np.asarray(data_info.loc[data_info['p'] == self.p, 'path'])
-        self.class_list = np.asarray(list(data_info)[16:-2])
-        # sty_info = pd.read_csv(sty_path)
-        # self.sty_dict_info = self.csv_to_dict(sty_info)
-
-    def csv_to_dict(self, sty_info):
-        tui_list = sty_info.iloc[:, 0]
-        sty_list = sty_info.iloc[:, 1]
-        sty_dict = defaultdict(list)
-        for idx in tqdm(range(len(tui_list))):
-            tui_idx = tui_list[idx]
-            sty_idx = sty_list[idx]
-            sty_dict[tui_idx] = sty_idx
-        return sty_dict
+        self.lookup_table = self.create_lookup_table(self.umls_info, 'file_path')
 
     def __len__(self):
         return len(self.dcm_relative_paths)
@@ -403,39 +392,59 @@ class MIMIC_Dataset(Dataset):
             entity_dict[token_idx] = label_idx
         return entity_dict
 
-    def __getitem__(self, index):
-        class_label = self.class_list[index]
-        # entities = self.umls_json_info[index]['entities']
-        # captions = self.umls_json_info[index]['caption']
-        entities = self.umls_info[index]["entity_presence"]
-        if len(entities) != 0:
-            try:
-                radgraph_entities = self.radgraph_json_info[self.umls_info[index]['file_path']]['entities']
-                radgraph_entity_dict = self.get_entity_list(radgraph_entities)
-                entity_details = ''
-                for entity in entities:
-                    sub_entities = entity["entities"]
-                    sub_entity_details = ''
-                    for sub_entity in sub_entities:
-                        sub_entity_info = sub_entity["text"]
-                        if sub_entity_info in radgraph_entity_dict.keys():
-                            sub_entity_details += sub_entity_info + radgraph_entity_dict[sub_entity_info]
-                        else:
-                            sub_entity_details += sub_entity_info
-                    entity_details = entity_details + sub_entity_details + ' [SEP] '
-            except:
-                entity_details = ''
-                for entity in entities:
-                    sub_entities = entity["entities"]
-                    sub_entity_details = ''
-                    for sub_entity in sub_entities:
-                        sub_entity_details += sub_entity["text"]
-                    entity_details = entity_details + sub_entity_details + ' [SEP] '
-        else:
-            entity_details = ''
-            for sub_entity in entities:
-                entity_details = entity_details + sub_entity["sentence_text"] + ' [SEP] '
+    def create_lookup_table(self, dicts, key):
+        lookup_table = {}
+        for d in dicts:
+            lookup_table[d[key]] = d
+        return lookup_table
 
-        return {
-            "entity": entity_details
-        }
+    def extract_path_segment(self, path, pattern):
+        # Search for the pattern in the path
+        match = re.search(pattern, path)
+        if match:
+            # Return the path up to the end of the matched pattern
+            return path[:match.end()]
+        return None
+
+    def preprocess_entities(self, base_path, samples):
+        pattern = 's[0-9]+'
+        for sample in samples:
+            entity_info = ""
+            path = os.path.join(base_path, sample["rel_path"])
+            path = self.extract_path_segment(path, pattern) + ".txt"
+            umls = self.lookup_table.get(path)
+            sentences = umls["sentences"]
+            sentence_indices = [0]
+            sentence_entities = []
+            for sentence in sentences:
+                sentence_indices.append(sentence_indices[-1] + len(sentence["sentence_text"]))
+                if sentence["entities"]:
+                    for entity in sentence["entities"]:
+                        sentence_entities.append(entity["text"])
+
+            try:
+                radgraph_entities = self.radgraph_json_info[path]['entities']
+                radgraph_list = []
+                for entity in list(radgraph_entities.values()):
+                    radgraph_list.append((entity["tokens"], self.entity_label_dict[entity["label"]]))
+                for sentence in sentences:
+                    if sentence["entities"]:
+                        for entity in sentence["entities"]:
+                            for i, radgraph_tuple in enumerate(radgraph_list):
+                                if radgraph_tuple[0] in entity["text"]:
+                                    entity["presence"] = radgraph_list[i][1]
+                                    continue
+                            entity_info += entity["text"] + " " + entity["presence"] + " "
+                        entity_info += " [SEP] "
+
+            except KeyError:
+                for sentence in sentences:
+                    if sentence["entities"]:
+                        for entity in sentence["entities"]:
+                            entity_info += entity["text"] + " " +  entity["presence"] + " "
+                        entity_info += " [SEP] "
+
+            sample["impression"] = entity_info
+        return samples
+
+
