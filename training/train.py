@@ -361,7 +361,7 @@ def main():
                         if bool(torch.rand(1) < args.ucg_probability):
                             batch["input_ids"][i] = empty_token_id
                     # Convert images to latent space
-                    latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]])
+                    latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(device=unet.device, dtype=weight_dtype )
                     latents = latents * vae.config.scaling_factor
 
                     # Sample noise that we'll add to the latents
