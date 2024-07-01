@@ -1,7 +1,8 @@
 """adapted from https://github.com/wooyeolBaek/attention-map"""
-
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
+from diffusers.models.transformers.transformer_2d import Transformer2DModel
 
 import torch
 import torch.nn.functional as F
@@ -400,9 +401,34 @@ def attn_call2_0(
 
 
 def cross_attn_init():
+    call = AttnProcessor.__call__
+    call2 = AttnProcessor2_0.__call__
     AttnProcessor.__call__ = attn_call
-    AttnProcessor2_0.__call__ = attn_call # attn_call is faster
-    # AttnProcessor2_0.__call__ = attn_call2_0
+    AttnProcessor2_0.__call__ = attn_call# attn_call is faster
+    return call, call2
+
+
+def disable_cross_attn(call1, call2):
+    AttnProcessor.__call__ = call1
+    AttnProcessor2_0.__call__ = call2
+
+
+@contextmanager
+def temporary_cross_attention():
+    # Save original methods
+    original_attn_call = AttnProcessor.__call__
+    original_attn_call2_0 = AttnProcessor2_0.__call__
+
+    # Replace with custom methods
+    AttnProcessor.__call__ = attn_call
+    AttnProcessor2_0.__call__ = attn_call
+
+    try:
+        yield
+    finally:
+        # Restore original methods
+        AttnProcessor.__call__ = original_attn_call
+        AttnProcessor2_0.__call__ = original_attn_call2_0
 
 
 def hook_fn(name):
@@ -433,7 +459,7 @@ def register_cross_attention_hook(unet):
 
         hook = module.register_forward_hook(hook_fn(name))
     
-    return unet
+    return unet, hook
 
 
 def set_layer_with_name_and_path(model, target_name="attn2", current_path=""):
@@ -449,3 +475,5 @@ def set_layer_with_name_and_path(model, target_name="attn2", current_path=""):
         set_layer_with_name_and_path(layer, target_name, new_path)
     
     return model
+
+

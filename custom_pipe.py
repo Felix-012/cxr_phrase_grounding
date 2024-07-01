@@ -47,7 +47,7 @@ def _load_vae(component_name, path, torch_dtype, variant=None):
 def init_attn_save(pipe):
     cross_attn_init()
     pipe.unet = set_layer_with_name_and_path(pipe.unet)
-    pipe.unet = register_cross_attention_hook(pipe.unet)
+    pipe.unet, _ = register_cross_attention_hook(pipe.unet)
 
 
 class FrozenCustomPipe:

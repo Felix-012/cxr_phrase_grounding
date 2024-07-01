@@ -2,6 +2,8 @@
 
 import argparse
 import logging
+import sys
+import gc
 from datetime import timedelta
 import torchvision.transforms.functional as functional
 import accelerate
@@ -29,16 +31,14 @@ from tqdm.auto import tqdm
 from custom_pipe import FrozenCustomPipe
 from datasets import get_dataset
 from datasets.utils import load_config
-from util_scripts.attention_maps import cross_attn_init, set_layer_with_name_and_path, register_cross_attention_hook, \
-    all_attn_maps, all_neg_attn_maps
+from util_scripts.attention_maps import set_layer_with_name_and_path, register_cross_attention_hook, \
+    all_attn_maps, all_neg_attn_maps,  temporary_cross_attention
 from util_scripts.preliminary_masks import preprocess_attention_maps
 from util_scripts.utils_generic import collate_batch
 from util_scripts.utils_train import get_latest_directory, get_parser_arguments_train, tokenize_captions, unwrap_model, \
     normalize_and_scale_tensor
-from evaluation.compute_bbox import vis
 
 logger = get_logger(__name__, log_level="INFO")
-
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -333,25 +333,24 @@ def main():
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
-        with accelerator.main_process_first():
-            with accelerator.autocast():
-                if config.num_chunks > 1 and epoch != first_epoch:
-                    train_dataset.load_next_chunk()
-                    train_dataloader = DataLoader(
-                        train_dataset,
-                        shuffle=True,
-                        collate_fn=collate_batch,
-                        batch_size=args.train_batch_size,
-                        num_workers=config.dataloading.num_workers,
-                    )
-                    accelerator.print("Tokenizing training data...")
-                    for data in train_dataset:
-                        impression = data['impression'] if 'impression' in data else None
-                        if impression:
-                            data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
-                                                                                          is_train=True)
-                        else:
-                            raise KeyError("No impression saved")
+        with accelerator.main_process_first(), accelerator.autocast():
+            if config.num_chunks > 1 and epoch != first_epoch:
+                train_dataset.load_next_chunk()
+                train_dataloader = DataLoader(
+                    train_dataset,
+                    shuffle=True,
+                    collate_fn=collate_batch,
+                    batch_size=args.train_batch_size,
+                    num_workers=config.dataloading.num_workers,
+                )
+                accelerator.print("Tokenizing training data...")
+                for data in train_dataset:
+                    impression = data['impression'] if 'impression' in data else None
+                    if impression:
+                        data['input_ids'], data['attention_mask'] = tokenize_captions([impression], tokenizer,
+                                                                                      is_train=True)
+                    else:
+                        raise KeyError("No impression saved")
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 for i in range(len(batch["input_ids"])):
@@ -481,21 +480,20 @@ def main():
                         f" {args.validation_prompt}."
                     )
 
-                    #inference_unet = copy.deepcopy(unet)
-                    #inference_unet.eval()
-                    #inference_unet.requires_grad_(False)
+                    inference_unet = copy.deepcopy(unet)
+                    inference_unet.eval()
+                    inference_unet.requires_grad_(False)
                     pipeline = StableDiffusionPipeline(
                             vae=accelerator.unwrap_model(vae),
                             text_encoder=accelerator.unwrap_model(text_encoder),
                             tokenizer=tokenizer,
-                            unet=accelerator.unwrap_model(unet),
+                            unet=accelerator.unwrap_model(inference_unet),
                             safety_checker=None,
                             feature_extractor=None,
                             scheduler=noise_scheduler
                     )
-                    #cross_attn_init()
-                    #pipeline.unet = set_layer_with_name_and_path(pipeline.unet)
-                    #pipeline.unet = register_cross_attention_hook(pipeline.unet)
+                    #call1, call2 = cross_attn_init()
+
 
 
                     pipeline.set_progress_bar_config(disable=True)
@@ -514,17 +512,22 @@ def main():
 
                     images = []
                     attention_images = []
-                    for i in range(args.num_validation_images):
+                    with temporary_cross_attention():
+                        pipeline.unet = set_layer_with_name_and_path(pipeline.unet)
+                        pipeline.unet, _ = register_cross_attention_hook(pipeline.unet)
+                        for i in range(args.num_validation_images):
+                            all_neg_attn_maps.clear()
+                            all_attn_maps.clear()
+
+                            with autocast_ctx, torch.no_grad():
+                                image = pipeline(args.validation_prompt, num_inference_steps=20,
+                                                 generator=generator).images[0]
+                            images.append(image)
+
+                            attention_images.append(preprocess_attention_maps(all_attn_maps, on_cpu=True).detach().cpu())
+
                         all_neg_attn_maps.clear()
                         all_attn_maps.clear()
-
-                        with autocast_ctx:
-                            image = pipeline(args.validation_prompt, num_inference_steps=20,
-                                             generator=generator).images[0]
-                        images.append(image)
-
-                        #attention_images.append(preprocess_attention_maps(all_attn_maps, on_cpu=True))
-
 
                     for tracker in accelerator.trackers:
                         if tracker.name == "tensorboard":
@@ -537,17 +540,19 @@ def main():
                                         wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
                                         for i, image in enumerate(images)
                                     ],
-                                    #"attention": [
-                                    #    wandb.Image(functional.to_pil_image(
-                                    #        normalize_and_scale_tensor(image.squeeze()[:,:,1:-1].mean(dim=(0,1,2)))), caption=f"{i}: {args.validation_prompt}")
-                                    #    for i, image in enumerate(attention_images)
-                                    #]
+                                    "attention": [
+                                        wandb.Image(functional.to_pil_image(
+                                            normalize_and_scale_tensor(image.squeeze()[:,:,1:-1].mean(dim=(0,1,2)))), caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(attention_images)
+                                    ]
                                 }
                             )
-
                     del pipeline
-                    #del inference_unet
+                    del inference_unet
+                    torch.cuda.empty_cache()
+
             torch.cuda.empty_cache()
+
 
     # Save the layers
     accelerator.wait_for_everyone()
