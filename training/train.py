@@ -6,7 +6,7 @@ from datetime import timedelta
 import torchvision.transforms.functional as functional
 import accelerate
 from transformers import CLIPTokenizer, CLIPTextModel
-
+import copy
 from custom_pipe import _load_unet
 import math
 import os
@@ -16,6 +16,7 @@ from pathlib import Path
 import wandb
 import numpy as np
 import torch
+torch.autograd.set_detect_anomaly(True)
 import torch.nn.functional as F
 import torch.utils.checkpoint
 from accelerate import Accelerator, InitProcessGroupKwargs
@@ -97,7 +98,6 @@ def main():
     # If passed along, set the training seed now.
     if args.seed is not None:
         set_seed(args.seed)
-
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
@@ -127,6 +127,7 @@ def main():
             args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant, torch_dtype=torch.float32
         )
 
+
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
     text_encoder = text_encoder.eval()
@@ -137,9 +138,8 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = _load_unet(component_name="unet", path=args.pretrained_model_name_or_path, torch_dtype=torch.float32)
+        ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
         ema_unet.to("cuda")
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -329,6 +329,7 @@ def main():
         "", max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
     ).input_ids
 
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
@@ -351,204 +352,202 @@ def main():
                                                                                           is_train=True)
                         else:
                             raise KeyError("No impression saved")
+        for step, batch in enumerate(train_dataloader):
+            with accelerator.accumulate(unet):
+                for i in range(len(batch["input_ids"])):
+                    if bool(torch.rand(1) < args.ucg_probability):
+                        batch["input_ids"][i] = empty_token_id
+                # Convert images to latent space
+                latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(device=unet.device, dtype=weight_dtype )
+                latents = latents * vae.config.scaling_factor
 
-            for name, param in unet.named_parameters():
-                if torch.isnan(param).any():
-                    print(f"NaN detected in {name} before training starts.")
-            for step, batch in enumerate(train_dataloader):
-                with accelerator.accumulate(unet):
-                    for i in range(len(batch["input_ids"])):
-                        if bool(torch.rand(1) < args.ucg_probability):
-                            batch["input_ids"][i] = empty_token_id
-                    # Convert images to latent space
-                    latents = torch.cat([latent.latent_dist.sample() for latent in batch["img"]]).to(device=unet.device, dtype=weight_dtype )
-                    latents = latents * vae.config.scaling_factor
+                # Sample noise that we'll add to the latents
+                noise = torch.randn_like(latents)
+                if args.noise_offset:
+                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                    noise += args.noise_offset * torch.randn(
+                        (latents.shape[0], latents.shape[1], 1, 1), device=unet.device
+                    )
 
-                    # Sample noise that we'll add to the latents
-                    noise = torch.randn_like(latents)
-                    if args.noise_offset:
-                        # https://www.crosslabs.org//blog/diffusion-with-offset-noise
-                        noise += args.noise_offset * torch.randn(
-                            (latents.shape[0], latents.shape[1], 1, 1), device=unet.device
-                        )
+                bsz = latents.shape[0]
+                # Sample a random timestep for each image
+                timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=unet.device)
+                timesteps = timesteps.long()
 
-                    bsz = latents.shape[0]
-                    # Sample a random timestep for each image
-                    timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=unet.device)
-                    timesteps = timesteps.long()
+                # Add noise to the latents according to the noise magnitude at each timestep
+                # (this is the forward diffusion process)
+                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                    # Add noise to the latents according to the noise magnitude at each timestep
-                    # (this is the forward diffusion process)
-                    noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                # Get the text embedding for conditioning
+                encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
 
-                    # Get the text embedding for conditioning
-                    encoder_hidden_states = text_encoder(batch["input_ids"], return_dict=False, attention_mask=batch["attention_mask"])[0]
+                # Get the target for loss depending on the prediction type
+                if args.prediction_type is not None:
+                    # set prediction_type of scheduler if defined
+                    noise_scheduler.register_to_config(prediction_type=args.prediction_type)
 
-                    # Get the target for loss depending on the prediction type
-                    if args.prediction_type is not None:
-                        # set prediction_type of scheduler if defined
-                        noise_scheduler.register_to_config(prediction_type=args.prediction_type)
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    target = noise
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    target = noise_scheduler.get_velocity(latents, noise, timesteps)
+                else:
+                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
+                # Predict the noise residual and compute loss
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+
+                if args.snr_gamma is None:
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                else:
+                    # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
+                    # Since we predict the noise instead of x_0, the original formulation is slightly changed.
+                    # This is discussed in Section 4.2 of the same paper.
+                    snr = compute_snr(noise_scheduler, timesteps)
+                    mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                        dim=1
+                    )[0]
                     if noise_scheduler.config.prediction_type == "epsilon":
-                        target = noise
+                        mse_loss_weights = mse_loss_weights / snr
                     elif noise_scheduler.config.prediction_type == "v_prediction":
-                        target = noise_scheduler.get_velocity(latents, noise, timesteps)
-                    else:
-                        raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                        mse_loss_weights = mse_loss_weights / (snr + 1)
 
-                    # Predict the noise residual and compute loss
-                    model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
+                    loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
+                    loss = loss.mean()
 
-                    if args.snr_gamma is None:
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                    else:
-                        # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
-                        # Since we predict the noise instead of x_0, the original formulation is slightly changed.
-                        # This is discussed in Section 4.2 of the same paper.
-                        snr = compute_snr(noise_scheduler, timesteps)
-                        mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
-                            dim=1
-                        )[0]
-                        if noise_scheduler.config.prediction_type == "epsilon":
-                            mse_loss_weights = mse_loss_weights / snr
-                        elif noise_scheduler.config.prediction_type == "v_prediction":
-                            mse_loss_weights = mse_loss_weights / (snr + 1)
-
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
-                        loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
-                        loss = loss.mean()
-
-                    # Gather the losses across all processes for logging (if we use distributed training).
-                    avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
-                    train_loss += avg_loss.item() / args.gradient_accumulation_steps
-
-                    # Backpropagate
-                    accelerator.backward(loss)
-                    if accelerator.sync_gradients:
-                        accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
-                    optimizer.step()
-                    lr_scheduler.step()
-                    optimizer.zero_grad()
-
-                # Checks if the accelerator has performed an optimization step behind the scenes
+                # Gather the losses across all processes for logging (if we use distributed training).
+                avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
+                train_loss += avg_loss.item() / args.gradient_accumulation_steps
+                # Backpropagate
+                accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    if args.use_ema:
-                        ema_unet.step(unet.parameters())
-                    progress_bar.update(1)
-                    global_step += 1
-                    accelerator.log({"train_loss": train_loss}, step=global_step)
-                    train_loss = 0.0
+                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
 
-                    if global_step % args.checkpointing_steps == 0:
-                        if accelerator.is_main_process:
-                            # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
-                            if args.checkpoints_total_limit is not None:
-                                checkpoints = os.listdir(args.output_dir)
-                                checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
-                                checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
+                progress_bar.update(1)
+                global_step += 1
+                accelerator.log({"train_loss": train_loss}, step=global_step)
+                train_loss = 0.0
 
-                                # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
-                                if len(checkpoints) >= args.checkpoints_total_limit:
-                                    num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
-                                    removing_checkpoints = checkpoints[0:num_to_remove]
+                if global_step % args.checkpointing_steps == 0:
+                    if accelerator.is_main_process:
+                        # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
+                        if args.checkpoints_total_limit is not None:
+                            checkpoints = os.listdir(args.output_dir)
+                            checkpoints = [d for d in checkpoints if d.startswith("checkpoint")]
+                            checkpoints = sorted(checkpoints, key=lambda x: int(x.split("-")[1]))
 
-                                    logger.info(
-                                        f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
-                                    )
-                                    logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
+                            # before we save the new checkpoint, we need to have at _most_ `checkpoints_total_limit - 1` checkpoints
+                            if len(checkpoints) >= args.checkpoints_total_limit:
+                                num_to_remove = len(checkpoints) - args.checkpoints_total_limit + 1
+                                removing_checkpoints = checkpoints[0:num_to_remove]
 
-                                    for removing_checkpoint in removing_checkpoints:
-                                        removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
-                                        shutil.rmtree(removing_checkpoint)
-
-                            save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                            accelerator.save_state(save_path)
-                            unet.save_pretrained(save_path)
-
-                            logger.info(f"Saved state to {save_path}")
-
-                logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-                progress_bar.set_postfix(**logs)
-
-                if global_step >= args.max_train_steps:
-                    break
-
-                if accelerator.is_main_process:
-                    if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
-                        try:
-                            get_latest_directory(args)
-                        except TypeError:
-                            logger.info(f"Skipping validation - checkpoint {args.resume_from_checkpoint} could not be found")
-                            continue
-                        logger.info(
-                            f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
-                            f" {args.validation_prompt}."
-                        )
-
-                        pipeline = StableDiffusionPipeline(
-                                vae=accelerator.unwrap_model(vae),
-                                text_encoder=accelerator.unwrap_model(text_encoder),
-                                tokenizer=tokenizer,
-                                unet=accelerator.unwrap_model(unet),
-                                safety_checker=None,
-                                feature_extractor=None,
-                                scheduler=noise_scheduler
-                        )
-                        cross_attn_init()
-                        pipeline.unet = set_layer_with_name_and_path(pipeline.unet)
-                        pipeline.unet = register_cross_attention_hook(pipeline.unet)
-
-
-                        pipeline = pipeline
-                        pipeline.set_progress_bar_config(disable=True)
-
-                        if args.enable_xformers_memory_efficient_attention:
-                            pipeline.enable_xformers_memory_efficient_attention()
-
-                        # run inference
-                        generator = torch.Generator(device="cuda")
-                        if args.seed is not None:
-                            generator = generator.manual_seed(args.seed)
-                        if torch.backends.mps.is_available():
-                            autocast_ctx = nullcontext()
-                        else:
-                            autocast_ctx = torch.autocast(accelerator.device.type)
-
-                        images = []
-                        attention_images = []
-                        for i in range(args.num_validation_images):
-                            all_neg_attn_maps.clear()
-                            all_attn_maps.clear()
-
-                            with autocast_ctx:
-                                image = pipeline(args.validation_prompt, num_inference_steps=20,
-                                                 generator=generator).images[0]
-                            images.append(image)
-
-                            attention_images.append(preprocess_attention_maps(all_attn_maps, on_cpu=True))
-
-
-                        for tracker in accelerator.trackers:
-                            if tracker.name == "tensorboard":
-                                np_images = np.stack([np.asarray(img) for img in images])
-                                tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                            if tracker.name == "wandb":
-                                tracker.log(
-                                    {
-                                        "validation": [
-                                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                            for i, image in enumerate(images)
-                                        ],
-                                        "attention": [
-                                            wandb.Image(functional.to_pil_image(
-                                                normalize_and_scale_tensor(image.squeeze()[:,:,1:-1].mean(dim=(0,1,2)))), caption=f"{i}: {args.validation_prompt}")
-                                            for i, image in enumerate(attention_images)
-                                        ]
-                                    }
+                                logger.info(
+                                    f"{len(checkpoints)} checkpoints already exist, removing {len(removing_checkpoints)} checkpoints"
                                 )
+                                logger.info(f"removing checkpoints: {', '.join(removing_checkpoints)}")
 
-                        del pipeline
-                torch.cuda.empty_cache()
+                                for removing_checkpoint in removing_checkpoints:
+                                    removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
+                                    shutil.rmtree(removing_checkpoint)
+
+                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
+                        accelerator.save_state(save_path)
+                        unet.save_pretrained(save_path)
+
+                        logger.info(f"Saved state to {save_path}")
+
+            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            progress_bar.set_postfix(**logs)
+
+            if global_step >= args.max_train_steps:
+                break
+
+            if accelerator.is_main_process:
+                if args.validation_prompt is not None and progress_bar.n % args.generation_validation_epochs == 0:
+                    try:
+                        get_latest_directory(args)
+                    except TypeError:
+                        logger.info(f"Skipping validation - checkpoint {args.resume_from_checkpoint} could not be found")
+                        continue
+                    logger.info(
+                        f"Running validation generation... \n Generating {args.num_validation_images} images with prompt:"
+                        f" {args.validation_prompt}."
+                    )
+
+                    #inference_unet = copy.deepcopy(unet)
+                    #inference_unet.eval()
+                    #inference_unet.requires_grad_(False)
+                    pipeline = StableDiffusionPipeline(
+                            vae=accelerator.unwrap_model(vae),
+                            text_encoder=accelerator.unwrap_model(text_encoder),
+                            tokenizer=tokenizer,
+                            unet=accelerator.unwrap_model(unet),
+                            safety_checker=None,
+                            feature_extractor=None,
+                            scheduler=noise_scheduler
+                    )
+                    #cross_attn_init()
+                    #pipeline.unet = set_layer_with_name_and_path(pipeline.unet)
+                    #pipeline.unet = register_cross_attention_hook(pipeline.unet)
+
+
+                    pipeline.set_progress_bar_config(disable=True)
+
+                    if args.enable_xformers_memory_efficient_attention:
+                        pipeline.enable_xformers_memory_efficient_attention()
+
+                    # run inference
+                    generator = torch.Generator(device="cuda")
+                    if args.seed is not None:
+                        generator = generator.manual_seed(args.seed)
+                    if torch.backends.mps.is_available():
+                        autocast_ctx = nullcontext()
+                    else:
+                        autocast_ctx = torch.autocast(accelerator.device.type)
+
+                    images = []
+                    attention_images = []
+                    for i in range(args.num_validation_images):
+                        all_neg_attn_maps.clear()
+                        all_attn_maps.clear()
+
+                        with autocast_ctx:
+                            image = pipeline(args.validation_prompt, num_inference_steps=20,
+                                             generator=generator).images[0]
+                        images.append(image)
+
+                        #attention_images.append(preprocess_attention_maps(all_attn_maps, on_cpu=True))
+
+
+                    for tracker in accelerator.trackers:
+                        if tracker.name == "tensorboard":
+                            np_images = np.stack([np.asarray(img) for img in images])
+                            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+                        if tracker.name == "wandb":
+                            tracker.log(
+                                {
+                                    "validation": [
+                                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                        for i, image in enumerate(images)
+                                    ],
+                                    #"attention": [
+                                    #    wandb.Image(functional.to_pil_image(
+                                    #        normalize_and_scale_tensor(image.squeeze()[:,:,1:-1].mean(dim=(0,1,2)))), caption=f"{i}: {args.validation_prompt}")
+                                    #    for i, image in enumerate(attention_images)
+                                    #]
+                                }
+                            )
+
+                    del pipeline
+                    #del inference_unet
+            torch.cuda.empty_cache()
 
     # Save the layers
     accelerator.wait_for_everyone()
